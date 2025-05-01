@@ -1,5 +1,5 @@
 [package]
-name = "ddsketchy"
+name = "dd_sketchy"
 version = "0.1.0"
 authors = ["Patrick McGleenon"]
 edition = "2021"
@@ -8,7 +8,11 @@ license = "Apache-2.0 OR MIT"
 repository = "https://github.com/pmcgleenon/ddsketchy"
 
 [[bench]]
-name = "sketches_ddsketch_bench"
+name = "dd_sketchy_bench"
+harness = false
+
+[[bench]]
+name = "ddsketch_bench"
 harness = false
 
 [dependencies]
