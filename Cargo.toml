@@ -1,0 +1,22 @@
+[package]
+name = "ddsketchy"
+version = "0.1.0"
+authors = ["Patrick McGleenon"]
+edition = "2021"
+description = "DD Sketch in Rust, benchmarked against sketches-ddsketch"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/pmcgleenon/ddsketchy"
+
+[[bench]]
+name = "sketches_ddsketch_bench"
+harness = false
+
+[dependencies]
+# none!
+
+[dev-dependencies]
+criterion = "0.4"
+rand = "0.8"
+# existing Go-port implementation
+sketches-ddsketch = "0.3"
+
