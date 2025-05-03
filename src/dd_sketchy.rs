@@ -21,7 +21,7 @@ pub enum DDSketchError {
 #[derive(Clone, Debug, PartialEq)]
 #[repr(align(64))]
 struct AlignedBuckets {
-    bins: [u64; 4097]
+    bins: [u64; 4096]
 }
 
 /// A simple, optimized DD Sketch implementation.
@@ -61,7 +61,7 @@ impl DDSketch {
             count: 0,
             sum: 0.0,
             inv_ln_gamma,
-            bins: AlignedBuckets { bins: [0; 4097] },
+            bins: AlignedBuckets { bins: [0; 4096] },
             alpha,
             max_bins: 4096,
             offset: 2048,
