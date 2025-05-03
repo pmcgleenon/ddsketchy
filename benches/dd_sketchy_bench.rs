@@ -52,5 +52,33 @@ fn bench_merge(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_insert, bench_merge);
+fn bench_quantile(c: &mut Criterion) {
+    let mut group = c.benchmark_group("quantile_throughput");
+    let mut rng = StdRng::seed_from_u64(42);
+    
+    // Pre-generate random numbers and create a sketch
+    let values: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
+    let sketch = {
+        let mut s = DDSketch::new(0.01).expect("Failed to create sketch");
+        for &v in &values {
+            s.add(v);
+        }
+        s
+    };
+
+    // Benchmark different quantile queries
+    for &quantile in &[0.0, 0.25, 0.5, 0.75, 0.99, 1.0] {
+        group.bench_with_input(BenchmarkId::new("ddsketchy", quantile), &quantile, |b, &q| {
+            let mut result = 0.0;
+            b.iter(|| {
+                result += sketch.quantile(q).unwrap();
+                criterion::black_box(result);
+            });
+        });
+    }
+
+    group.finish();
+}
+
+criterion_group!(benches, bench_insert, bench_merge, bench_quantile);
 criterion_main!(benches);
