@@ -10,7 +10,7 @@ fn bench_insert(c: &mut Criterion) {
         let values: Vec<f64> = (0..size).map(|_| rng.gen()).collect();
         
         group.bench_with_input(BenchmarkId::new("ddsketchy", size), &size, |b, &_n| {
-            let mut sketch = DDSketch::new(0.01);
+            let mut sketch = DDSketch::new(0.01).expect("Failed to create sketch");
             b.iter(|| {
                 for &v in &values {
                     sketch.add(v);
@@ -26,21 +26,28 @@ fn bench_merge(c: &mut Criterion) {
     let mut rng = StdRng::seed_from_u64(42);
     
     // Pre-generate random numbers
-    let values: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
+    let values1: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
+    let values2: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
     
-    // prepare base sketch
-    let base = {
-        let mut s = DDSketch::new(0.01);
-        for &v in &values {
+    // prepare two different sketches
+    let sketch1 = {
+        let mut s = DDSketch::new(0.01).expect("Failed to create sketch1");
+        for &v in &values1 {
             s.add(v);
         }
         s
     };
-    let other = base.clone();
+    let sketch2 = {
+        let mut s = DDSketch::new(0.01).expect("Failed to create sketch2");
+        for &v in &values2 {
+            s.add(v);
+        }
+        s
+    };
 
     group.bench_function("ddsketchy", |b| b.iter(|| {
-        let mut s = base.clone();
-        s.merge(&other).unwrap();
+        let mut s = sketch1.clone();
+        s.merge(&sketch2).unwrap();
     }));
     group.finish();
 }

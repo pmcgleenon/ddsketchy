@@ -24,16 +24,30 @@ fn bench_insert(c: &mut Criterion) {
 fn bench_merge(c: &mut Criterion) {
     let mut group = c.benchmark_group("merge_throughput");
     let mut rng = StdRng::seed_from_u64(42);
-    let base = {
+    
+    // Pre-generate random numbers
+    let values1: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
+    let values2: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
+    
+    // prepare two different sketches
+    let sketch1 = {
         let mut s = DDSketch::new(Config::defaults());
-        for _ in 0..100_000 { s.add(rng.gen()); }
+        for &v in &values1 {
+            s.add(v);
+        }
         s
     };
-    let other = base.clone();
+    let sketch2 = {
+        let mut s = DDSketch::new(Config::defaults());
+        for &v in &values2 {
+            s.add(v);
+        }
+        s
+    };
 
     group.bench_function("sketches-ddsketch", |b| b.iter(|| {
-        let mut x = base.clone();
-        let _ = x.merge(&other);
+        let mut s = sketch1.clone();
+        let _ = s.merge(&sketch2);
     }));
     group.finish();
 }
