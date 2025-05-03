@@ -2,7 +2,7 @@
 //! replacing division by cached multiplication.
 //! No external dependencies.
 
-use std::f64;
+use core::f64;
 
 /// Errors that can occur during DDSketch operations
 #[derive(Debug, PartialEq)]
