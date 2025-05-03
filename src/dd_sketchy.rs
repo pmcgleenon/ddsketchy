@@ -31,9 +31,12 @@ pub struct DDSketch {
     /// Frequently accessed fields first
     count: u64,
     sum: f64,
+    min: f64,
+    max: f64,
     
     /// Precomputed values for faster bin_to_value
     inv_ln_gamma: f64,
+    gamma: f64,
     
     /// Then the bins array
     bins: AlignedBuckets,
@@ -60,7 +63,10 @@ impl DDSketch {
         Ok(Self {
             count: 0,
             sum: 0.0,
+            min: f64::INFINITY,
+            max: f64::NEG_INFINITY,
             inv_ln_gamma,
+            gamma,
             bins: AlignedBuckets { bins: [0; 4096] },
             alpha,
             max_bins: 4096,
@@ -68,8 +74,44 @@ impl DDSketch {
         })
     }
 
+    /// Find the two smallest non-empty buckets and merge them
+    fn collapse_smallest_buckets(&mut self) {
+        let mut smallest_idx = None;
+        let mut second_smallest_idx = None;
+        let mut smallest_count = u64::MAX;
+        let mut second_smallest_count = u64::MAX;
+
+        // Find two smallest non-empty buckets
+        for (i, &count) in self.bins.bins.iter().enumerate() {
+            if count == 0 {
+                continue;
+            }
+            if count < smallest_count {
+                second_smallest_count = smallest_count;
+                second_smallest_idx = smallest_idx;
+                smallest_count = count;
+                smallest_idx = Some(i);
+            } else if count < second_smallest_count {
+                second_smallest_count = count;
+                second_smallest_idx = Some(i);
+            }
+        }
+
+        // If we found two buckets to merge
+        if let (Some(i), Some(j)) = (smallest_idx, second_smallest_idx) {
+            // Merge into the higher index bucket
+            let (lower_idx, higher_idx) = if i < j { (i, j) } else { (j, i) };
+            self.bins.bins[higher_idx] += self.bins.bins[lower_idx];
+            self.bins.bins[lower_idx] = 0;
+        }
+    }
+
+    /// Count non-empty buckets
+    fn count_non_empty_buckets(&self) -> usize {
+        self.bins.bins.iter().filter(|&&count| count > 0).count()
+    }
+
     /// Add a value into the sketch (ignores NaN/Inf).
-    /// Uses unsafe pointer writes to avoid bounds checks on increment.
     #[inline(always)]
     pub fn add(&mut self, value: f64) {
         // Early check for non-finite values
@@ -77,34 +119,31 @@ impl DDSketch {
             return;
         }
 
-        // Parallel computation of conditions
-        let abs_value = value.abs();
-        let is_zero = value == Self::ZERO;
-        let is_positive = value >= Self::ZERO;
-        
-        // Independent computations
-        let log_value = if !is_zero { abs_value.ln() } else { Self::ZERO };
-        let scaled_log = log_value * self.inv_ln_gamma;
-        // zero goes in the zero-bin; everything else must map to at least bucket 1
-        let rel_idx = if is_zero {
-            0
-        } else {
-            let raw = scaled_log.ceil() as isize;
-            if raw < 1 { 1 } else { raw }
-        };
-        
+        // Update min/max
+        self.min = self.min.min(value);
+        self.max = self.max.max(value);
+
         // Update statistics
         self.count += 1;
         self.sum += value;
-        
+
         // Handle zero case early
-        if is_zero {
+        if value == Self::ZERO {
             self.bins.bins[self.offset] += 1;
             return;
         }
+
+        // Compute bucket index
+        let abs_value = value.abs();
+        let log_value = abs_value.ln();
+        let scaled_log = log_value * self.inv_ln_gamma;
+        let raw = scaled_log.ceil() as isize;
         
-        // Compute bucket index with bounds checking
-        let idx = if is_positive {
+        // Values between 1/gamma and gamma go in bucket ±1
+        let rel_idx = if raw <= 0 { 1 } else { raw };
+        
+        // Compute final index with bounds checking
+        let idx = if value >= Self::ZERO {
             self.offset.saturating_add(rel_idx as usize)
         } else {
             self.offset.saturating_sub(rel_idx as usize)
@@ -117,13 +156,20 @@ impl DDSketch {
             // If out of bounds, increment the last bin
             self.bins.bins[if value >= Self::ZERO { self.bins.bins.len() - 1 } else { 0 }] += 1;
         }
+
+        // Check if we need to collapse buckets
+        if self.count_non_empty_buckets() > self.max_bins {
+            self.collapse_smallest_buckets();
+        }
     }
 
     /// Merge another sketch into this one (in-place).
     /// Returns an error if the sketches have different alpha values or bin counts.
     #[inline(always)]
     pub fn merge(&mut self, other: &Self) -> Result<(), DDSketchError> {
-        if (self.alpha - other.alpha).abs() >= f64::EPSILON {
+        // Check alpha compatibility with reasonable tolerance
+        let alpha_diff = (self.alpha - other.alpha).abs();
+        if alpha_diff > 1e-10 {
             return Err(DDSketchError::AlphaMismatch);
         }
         if self.max_bins != other.max_bins {
@@ -135,6 +181,8 @@ impl DDSketch {
         }
         self.count += other.count;
         self.sum += other.sum;
+        self.min = self.min.min(other.min);
+        self.max = self.max.max(other.max);
         Ok(())
     }
 
@@ -154,6 +202,7 @@ impl DDSketch {
     }
 
     /// Estimate the q-th quantile (q in [0,1]).
+    #[inline(always)]
     pub fn quantile(&self, q: f64) -> Result<f64, DDSketchError> {
         if q < 0.0 || q > 1.0 {
             return Err(DDSketchError::InvalidQuantile);
@@ -162,8 +211,14 @@ impl DDSketch {
             return Ok(0.0);
         }
 
-        // new: use floor((count-1)*q)+1 so that
-        //   q=0.33 with count=4 → floor(3*0.33)=0 → rem=1 → 1st item
+        // Handle extreme quantiles using exact min/max
+        if q == 0.0 {
+            return Ok(self.min);
+        }
+        if q == 1.0 {
+            return Ok(self.max);
+        }
+
         let n = self.count;
         let idx0 = (((n - 1) as f64) * q).floor() as u64;
         let mut rem = idx0.saturating_add(1);
@@ -176,29 +231,24 @@ impl DDSketch {
             rem -= c;
         }
 
-        // fallback to max bin
-        Ok(self.bin_to_value(self.bins.bins.len() - 1))
+        // If we've exhausted all bins, return max
+        Ok(self.max)
     }
 
     /// Convert a bin index back to a representative value (bucket midpoint).
-    /// Optimized version with improved branch prediction.
     #[inline(always)]
     fn bin_to_value(&self, idx: usize) -> f64 {
-        // Early return for zero case (most common)
+        // Early return for zero case
         if idx == self.offset {
             return Self::ZERO;
         }
         
         // Calculate relative index
         let rel = idx as isize - self.offset as isize;
-        if rel == 0 {
-            return Self::ZERO;
-        }
         
         // Compute value using gamma^k
-        let gamma = (1.0 + self.alpha) / (1.0 - self.alpha);
         let k = rel.abs() as f64;
-        let value = gamma.powf(k - 1.0) * (1.0 + self.alpha);
+        let value = self.gamma.powf(k - 1.0) * (1.0 + self.alpha);
         
         // Apply sign
         if rel < 0 { -value } else { value }
