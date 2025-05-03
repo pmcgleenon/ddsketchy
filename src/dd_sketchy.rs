@@ -13,17 +13,19 @@ pub enum DDSketchError {
     BinCountMismatch,
     /// The quantile provided is not in the range [0,1]
     InvalidQuantile,
+    /// The alpha value provided is not in the range (0,1)
+    InvalidAlpha,
 }
 
 /// A cache-line aligned array of bucket counts
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 #[repr(align(64))]
 struct AlignedBuckets {
     bins: [u64; 4097]
 }
 
 /// A simple, optimized DD Sketch implementation.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 #[repr(align(64))]  // Align entire struct to cache line boundary
 pub struct DDSketch {
     /// Frequently accessed fields first
@@ -32,8 +34,6 @@ pub struct DDSketch {
     
     /// Precomputed values for faster bin_to_value
     inv_ln_gamma: f64,
-    ln_gamma: f64,
-    alpha_plus_one: f64,
     
     /// Then the bins array
     bins: AlignedBuckets,
@@ -47,28 +47,25 @@ pub struct DDSketch {
 impl DDSketch {
     /// Precomputed constants
     const ZERO: f64 = 0.0;
-    const ONE: f64 = 1.0;
-    const NEG_ONE: f64 = -1.0;
     
     /// Create a new DD Sketch with relative error `alpha`.
-    pub fn new(alpha: f64) -> Self {
-        assert!(alpha > 0.0 && alpha < 1.0, "alpha must be in (0,1)");
+    pub fn new(alpha: f64) -> Result<Self, DDSketchError> {
+        if alpha <= 0.0 || alpha >= 1.0 {
+            return Err(DDSketchError::InvalidAlpha);
+        }
         let gamma = (1.0 + alpha) / (1.0 - alpha);
         let ln_gamma = gamma.ln();
         let inv_ln_gamma = 1.0 / ln_gamma;
-        let alpha_plus_one = 1.0 + alpha;
         
-        Self {
+        Ok(Self {
             count: 0,
             sum: 0.0,
             inv_ln_gamma,
-            ln_gamma,
-            alpha_plus_one,
             bins: AlignedBuckets { bins: [0; 4097] },
             alpha,
             max_bins: 4096,
             offset: 2048,
-        }
+        })
     }
 
     /// Add a value into the sketch (ignores NaN/Inf).
@@ -215,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_add_zero() {
-        let mut dd = DDSketch::new(0.01);
+        let mut dd = DDSketch::new(0.01).unwrap();
         dd.add(0.0);
         assert_eq!(dd.count(), 1);
         assert_eq!(dd.sum(), 0.0);
@@ -223,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_quartiles() {
-        let mut dd = DDSketch::new(0.01);
+        let mut dd = DDSketch::new(0.01).unwrap();
 
         // Initialize sketch with {1.0, 2.0, 3.0, 4.0}
         for i in 1..5 {
@@ -252,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_neg_quartiles() {
-        let mut dd = DDSketch::new(0.01);
+        let mut dd = DDSketch::new(0.01).unwrap();
 
         // Initialize sketch with {-1.0, -2.0, -3.0, -4.0}
         for i in 1..5 {
@@ -274,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_simple_quantile() {
-        let mut dd = DDSketch::new(0.01);
+        let mut dd = DDSketch::new(0.01).unwrap();
 
         for i in 1..101 {
             dd.add(i as f64);
@@ -288,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_empty_sketch() {
-        let dd = DDSketch::new(0.01);
+        let dd = DDSketch::new(0.01).unwrap();
 
         assert_eq!(dd.quantile(0.98).unwrap(), 0.0);
         assert_eq!(dd.count(), 0);
@@ -333,7 +330,7 @@ mod tests {
             0.752586651,
         ];
 
-        let mut dd = DDSketch::new(0.01);
+        let mut dd = DDSketch::new(0.01).unwrap();
 
         for value in values {
             dd.add(*value);
@@ -345,6 +342,14 @@ mod tests {
         assert!(dd.quantile(0.25).is_ok());
         assert!(dd.quantile(0.5).is_ok());
         assert!(dd.quantile(0.75).is_ok());
+    }
+
+    #[test]
+    fn test_invalid_alpha() {
+        assert!(matches!(DDSketch::new(0.0), Err(DDSketchError::InvalidAlpha)));
+        assert!(matches!(DDSketch::new(1.0), Err(DDSketchError::InvalidAlpha)));
+        assert!(matches!(DDSketch::new(-1.0), Err(DDSketchError::InvalidAlpha)));
+        assert!(matches!(DDSketch::new(2.0), Err(DDSketchError::InvalidAlpha)));
     }
 }
 
