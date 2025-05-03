@@ -40,7 +40,7 @@ fn bench_merge(c: &mut Criterion) {
 
     group.bench_function("ddsketchy", |b| b.iter(|| {
         let mut s = base.clone();
-        s.merge(&other);
+        s.merge(&other).unwrap();
     }));
     group.finish();
 }

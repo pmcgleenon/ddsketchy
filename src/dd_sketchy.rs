@@ -4,6 +4,17 @@
 
 use std::f64;
 
+/// Errors that can occur during DDSketch operations
+#[derive(Debug, PartialEq)]
+pub enum DDSketchError {
+    /// The alpha values of two sketches don't match
+    AlphaMismatch,
+    /// The bin counts of two sketches don't match
+    BinCountMismatch,
+    /// The quantile provided is not in the range [0,1]
+    InvalidQuantile,
+}
+
 /// A cache-line aligned array of bucket counts
 #[derive(Clone)]
 #[repr(align(64))]
@@ -29,7 +40,6 @@ pub struct DDSketch {
     
     /// Less frequently accessed fields
     alpha: f64,
-    gamma: f64,
     max_bins: usize,
     offset: usize,
 }
@@ -56,7 +66,6 @@ impl DDSketch {
             alpha_plus_one,
             bins: AlignedBuckets { bins: [0; 4097] },
             alpha,
-            gamma,
             max_bins: 4096,
             offset: 2048,
         }
@@ -105,14 +114,22 @@ impl DDSketch {
     }
 
     /// Merge another sketch into this one (in-place).
-    pub fn merge(&mut self, other: &Self) {
-        assert!((self.alpha - other.alpha).abs() < f64::EPSILON, "alpha must match");
-        assert!(self.max_bins == other.max_bins, "bin count must match");
+    /// Returns an error if the sketches have different alpha values or bin counts.
+    #[inline(always)]
+    pub fn merge(&mut self, other: &Self) -> Result<(), DDSketchError> {
+        if (self.alpha - other.alpha).abs() >= f64::EPSILON {
+            return Err(DDSketchError::AlphaMismatch);
+        }
+        if self.max_bins != other.max_bins {
+            return Err(DDSketchError::BinCountMismatch);
+        }
+        
         for (a, b) in self.bins.bins.iter_mut().zip(other.bins.bins.iter()) {
             *a += *b;
         }
         self.count += other.count;
         self.sum += other.sum;
+        Ok(())
     }
 
     /// Number of values inserted.
@@ -131,27 +148,34 @@ impl DDSketch {
     }
 
     /// Estimate the q-th quantile (q in [0,1]).
-    pub fn quantile(&self, q: f64) -> f64 {
-        assert!(q >= 0.0 && q <= 1.0, "q must be between 0 and 1");
+    pub fn quantile(&self, q: f64) -> Result<f64, DDSketchError> {
+        if q < 0.0 || q > 1.0 {
+            return Err(DDSketchError::InvalidQuantile);
+        }
         if self.count == 0 {
-            return 0.0;
+            return Ok(0.0);
         }
         let mut rem = (q * (self.count as f64)).ceil() as u64;
         for (i, &c) in self.bins.bins.iter().enumerate() {
             if rem <= c {
-                return self.bin_to_value(i);
+                return Ok(self.bin_to_value(i));
             }
             rem -= c;
         }
         // fallback to max bin
-        self.bin_to_value(self.bins.bins.len() - 1)
+        Ok(self.bin_to_value(self.bins.bins.len() - 1))
     }
 
     /// Convert a bin index back to a representative value (bucket midpoint).
-    /// Optimized version with reduced branches and memory pressure.
+    /// Optimized version with improved branch prediction.
     #[inline(always)]
     fn bin_to_value(&self, idx: usize) -> f64 {
-        // Calculate relative index and its sign in parallel
+        // Early return for zero case (most common)
+        if idx == self.offset {
+            return Self::ZERO;
+        }
+        
+        // Calculate relative index
         let rel = idx as isize - self.offset as isize;
         let k = rel.abs() as f64;
         
@@ -160,13 +184,9 @@ impl DDSketch {
         let exp_term = (k_minus_one * self.ln_gamma).exp();
         let abs_result = exp_term * self.alpha_plus_one;
         
-        // Use arithmetic for branchless operations
-        let is_zero = (rel == 0) as i64 as f64;
-        let is_negative = (rel < 0) as i64 as f64;
-        
-        // Combine results using arithmetic instead of branches
-        let sign = 1.0 - 2.0 * is_negative;
-        abs_result * sign * (1.0 - is_zero)
+        // Use branchless sign computation
+        let sign = if rel < 0 { Self::NEG_ONE } else { Self::ONE };
+        abs_result * sign
     }
 }
 
