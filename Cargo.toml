@@ -15,12 +15,18 @@ harness = false
 name = "ddsketch_bench"
 harness = false
 
+[[bin]]
+name = "profiling"
+path = "benches/profiling.rs"
+
 [dependencies]
-# none!
+rand = "0.8"
 
 [dev-dependencies]
 criterion = "0.4"
-rand = "0.8"
 # existing Go-port implementation
 sketches-ddsketch = "0.3"
 
+[profile.release]
+debug = true        # include debug symbols for profiling
+opt-level = 3       # full optimizations

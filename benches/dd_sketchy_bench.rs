@@ -5,12 +5,16 @@ use dd_sketchy::DDSketch;
 fn bench_insert(c: &mut Criterion) {
     let mut group = c.benchmark_group("insert_throughput");
     for &size in &[1_000, 10_000, 100_000] {
+        // Pre-generate random numbers
+        let mut rng = StdRng::seed_from_u64(42);
+        let values: Vec<f64> = (0..size).map(|_| rng.gen()).collect();
+        
         group.bench_with_input(BenchmarkId::new("ddsketchy", size), &size, |b, &_n| {
             let mut sketch = DDSketch::new(0.01);
-            let mut rng = StdRng::seed_from_u64(42);
             b.iter(|| {
-                let v = rng.gen::<f64>();
-                sketch.add(v);
+                for &v in &values {
+                    sketch.add(v);
+                }
             });
         });
     }
@@ -20,16 +24,23 @@ fn bench_insert(c: &mut Criterion) {
 fn bench_merge(c: &mut Criterion) {
     let mut group = c.benchmark_group("merge_throughput");
     let mut rng = StdRng::seed_from_u64(42);
+    
+    // Pre-generate random numbers
+    let values: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
+    
+    // prepare base sketch
     let base = {
         let mut s = DDSketch::new(0.01);
-        for _ in 0..100_000 { s.add(rng.gen()); }
+        for &v in &values {
+            s.add(v);
+        }
         s
     };
     let other = base.clone();
 
     group.bench_function("ddsketchy", |b| b.iter(|| {
-        let mut x = base.clone();
-        x.merge(&other);
+        let mut s = base.clone();
+        s.merge(&other);
     }));
     group.finish();
 }
