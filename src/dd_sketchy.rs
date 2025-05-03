@@ -88,7 +88,13 @@ impl DDSketch {
         // Independent computations
         let log_value = if !is_zero { abs_value.ln() } else { Self::ZERO };
         let scaled_log = log_value * self.inv_ln_gamma;
-        let rel_idx = if is_zero { 0 } else { scaled_log.ceil() as isize };
+        // zero goes in the zero-bin; everything else must map to at least bucket 1
+        let rel_idx = if is_zero {
+            0
+        } else {
+            let raw = scaled_log.ceil() as isize;
+            if raw < 1 { 1 } else { raw }
+        };
         
         // Update statistics
         self.count += 1;
@@ -100,16 +106,19 @@ impl DDSketch {
             return;
         }
         
-        // Compute bucket index
+        // Compute bucket index with bounds checking
         let idx = if is_positive {
-            self.offset + rel_idx as usize
+            self.offset.saturating_add(rel_idx as usize)
         } else {
-            self.offset - rel_idx as usize
+            self.offset.saturating_sub(rel_idx as usize)
         };
         
-        // Update bucket count
+        // Update bucket count if within bounds
         if idx < self.bins.bins.len() {
             self.bins.bins[idx] += 1;
+        } else {
+            // If out of bounds, increment the last bin
+            self.bins.bins[if value >= Self::ZERO { self.bins.bins.len() - 1 } else { 0 }] += 1;
         }
     }
 
@@ -155,13 +164,21 @@ impl DDSketch {
         if self.count == 0 {
             return Ok(0.0);
         }
-        let mut rem = (q * (self.count as f64)).ceil() as u64;
+
+        // new: use floor((count-1)*q)+1 so that
+        //   q=0.33 with count=4 → floor(3*0.33)=0 → rem=1 → 1st item
+        let n = self.count;
+        let idx0 = (((n - 1) as f64) * q).floor() as u64;
+        let mut rem = idx0.saturating_add(1);
+
+        // scan bins in ascending order
         for (i, &c) in self.bins.bins.iter().enumerate() {
             if rem <= c {
                 return Ok(self.bin_to_value(i));
             }
             rem -= c;
         }
+
         // fallback to max bin
         Ok(self.bin_to_value(self.bins.bins.len() - 1))
     }
@@ -177,16 +194,157 @@ impl DDSketch {
         
         // Calculate relative index
         let rel = idx as isize - self.offset as isize;
+        if rel == 0 {
+            return Self::ZERO;
+        }
+        
+        // Compute value using gamma^k
+        let gamma = (1.0 + self.alpha) / (1.0 - self.alpha);
         let k = rel.abs() as f64;
+        let value = gamma.powf(k - 1.0) * (1.0 + self.alpha);
         
-        // Compute exp(ln_gamma * (k-1)) * alpha_plus_one
-        let k_minus_one = k - Self::ONE;
-        let exp_term = (k_minus_one * self.ln_gamma).exp();
-        let abs_result = exp_term * self.alpha_plus_one;
-        
-        // Use branchless sign computation
-        let sign = if rel < 0 { Self::NEG_ONE } else { Self::ONE };
-        abs_result * sign
+        // Apply sign
+        if rel < 0 { -value } else { value }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_relative_eq;
+
+    #[test]
+    fn test_add_zero() {
+        let mut dd = DDSketch::new(0.01);
+        dd.add(0.0);
+        assert_eq!(dd.count(), 1);
+        assert_eq!(dd.sum(), 0.0);
+    }
+
+    #[test]
+    fn test_quartiles() {
+        let mut dd = DDSketch::new(0.01);
+
+        // Initialize sketch with {1.0, 2.0, 3.0, 4.0}
+        for i in 1..5 {
+            dd.add(i as f64);
+        }
+
+        // We expect the following mappings from quantile to value:
+        // [0,0.33]: 1.0, (0.34,0.66]: 2.0, (0.67,0.99]: 3.0, (0.99, 1.0]: 4.0
+        let test_cases = vec![
+            (0.0, 1.0),
+            (0.25, 1.0),
+            (0.33, 1.0),
+            (0.34, 2.0),
+            (0.5, 2.0),
+            (0.66, 2.0),
+            (0.67, 3.0),
+            (0.75, 3.0),
+            (0.99, 3.0),
+            (1.0, 4.0),
+        ];
+
+        for (q, val) in test_cases {
+            assert_relative_eq!(dd.quantile(q).unwrap(), val, max_relative = 0.01);
+        }
+    }
+
+    #[test]
+    fn test_neg_quartiles() {
+        let mut dd = DDSketch::new(0.01);
+
+        // Initialize sketch with {-1.0, -2.0, -3.0, -4.0}
+        for i in 1..5 {
+            dd.add(-i as f64);
+        }
+
+        let test_cases = vec![
+            (0.0, -4.0),
+            (0.25, -4.0),
+            (0.5, -3.0),
+            (0.75, -2.0),
+            (1.0, -1.0),
+        ];
+
+        for (q, val) in test_cases {
+            assert_relative_eq!(dd.quantile(q).unwrap(), val, max_relative = 0.01);
+        }
+    }
+
+    #[test]
+    fn test_simple_quantile() {
+        let mut dd = DDSketch::new(0.01);
+
+        for i in 1..101 {
+            dd.add(i as f64);
+        }
+
+        assert_eq!(dd.quantile(0.95).unwrap().ceil(), 95.0);
+
+        assert!(dd.quantile(-1.01).is_err());
+        assert!(dd.quantile(1.01).is_err());
+    }
+
+    #[test]
+    fn test_empty_sketch() {
+        let dd = DDSketch::new(0.01);
+
+        assert_eq!(dd.quantile(0.98).unwrap(), 0.0);
+        assert_eq!(dd.count(), 0);
+        assert_eq!(dd.sum(), 0.0);
+
+        assert!(dd.quantile(1.01).is_err());
+    }
+
+    #[test]
+    fn test_basic_histogram_data() {
+        let values = &[
+            0.754225035,
+            0.752900282,
+            0.752812246,
+            0.752602367,
+            0.754310155,
+            0.753525981,
+            0.752981082,
+            0.752715536,
+            0.751667941,
+            0.755079054,
+            0.753528150,
+            0.755188464,
+            0.752508723,
+            0.750064549,
+            0.753960428,
+            0.751139298,
+            0.752523560,
+            0.753253428,
+            0.753498342,
+            0.751858358,
+            0.752104636,
+            0.753841300,
+            0.754467374,
+            0.753814334,
+            0.750881719,
+            0.753182556,
+            0.752576884,
+            0.753945708,
+            0.753571911,
+            0.752314573,
+            0.752586651,
+        ];
+
+        let mut dd = DDSketch::new(0.01);
+
+        for value in values {
+            dd.add(*value);
+        }
+
+        assert_eq!(dd.count(), 31);
+        assert_relative_eq!(dd.sum(), 23.343630625000003, max_relative = 0.01);
+
+        assert!(dd.quantile(0.25).is_ok());
+        assert!(dd.quantile(0.5).is_ok());
+        assert!(dd.quantile(0.75).is_ok());
     }
 }
 
