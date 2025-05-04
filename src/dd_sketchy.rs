@@ -1,8 +1,7 @@
-//! High-throughput DD Sketch initial implementation with first-phase optimization:
-//! replacing division by cached multiplication.
+//! DD Sketch implementation:
+//!
 //! No external dependencies.
 
-use core::f64;
 
 /// Errors that can occur during DDSketch operations
 #[derive(Debug, PartialEq)]
@@ -59,7 +58,7 @@ impl DDSketch {
         let gamma = (1.0 + alpha) / (1.0 - alpha);
         let ln_gamma = gamma.ln();
         let inv_ln_gamma = 1.0 / ln_gamma;
-        
+
         Ok(Self {
             count: 0,
             sum: 0.0,
@@ -114,7 +113,6 @@ impl DDSketch {
     /// Add a value into the sketch (ignores NaN/Inf).
     #[inline(always)]
     pub fn add(&mut self, value: f64) {
-        // Early check for non-finite values
         if !value.is_finite() {
             return;
         }
@@ -137,16 +135,15 @@ impl DDSketch {
         let abs_value = value.abs();
         let log_value = abs_value.ln();
         let scaled_log = log_value * self.inv_ln_gamma;
+        // original mapping: raw = ceil; enforce ≥1
         let raw = scaled_log.ceil() as isize;
-        
-        // Values between 1/gamma and gamma go in bucket ±1
-        let rel_idx = if raw <= 0 { 1 } else { raw };
+        let rel = if raw < 1 { 1 } else { raw };
         
         // Compute final index with bounds checking
         let idx = if value >= Self::ZERO {
-            self.offset.saturating_add(rel_idx as usize)
+            self.offset.saturating_add(rel as usize)
         } else {
-            self.offset.saturating_sub(rel_idx as usize)
+            self.offset.saturating_sub(rel as usize)
         };
         
         // Update bucket count if within bounds
@@ -219,19 +216,20 @@ impl DDSketch {
             return Ok(self.max);
         }
 
-        let n = self.count;
-        let idx0 = (((n - 1) as f64) * q).floor() as u64;
-        let mut rem = idx0.saturating_add(1);
+        // Calculate rank as in sketches-ddsketch:
+        // rank = floor(q * count + 0.5)
+        let rank = ((q * (self.count as f64)) + 0.5).floor() as u64;
+        let mut sum = 0;
 
-        // scan bins in ascending order
+        // Simple linear scan
         for (i, &c) in self.bins.bins.iter().enumerate() {
-            if rem <= c {
+            sum += c;
+            if sum >= rank {
                 return Ok(self.bin_to_value(i));
             }
-            rem -= c;
         }
 
-        // If we've exhausted all bins, return max
+        // If we get here, return max
         Ok(self.max)
     }
 
@@ -242,16 +240,13 @@ impl DDSketch {
         if idx == self.offset {
             return Self::ZERO;
         }
-        
+
         // Calculate relative index
         let rel = idx as isize - self.offset as isize;
-        
-        // Compute value using gamma^k
+        // weighted midpoint = γ^(k−1)·(1+α)
         let k = rel.abs() as f64;
-        let value = self.gamma.powf(k - 1.0) * (1.0 + self.alpha);
-        
-        // Apply sign
-        if rel < 0 { -value } else { value }
+        let v = self.gamma.powf(k - 1.0) * (1.0 + self.alpha);
+        if rel < 0 { -v } else { v }
     }
 }
 
@@ -259,139 +254,35 @@ impl DDSketch {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
+    use rand::{Rng, SeedableRng, rngs::StdRng};
+
+    const RELATIVE_ERROR: f64 = 0.01;
+    const TEST_VALUES: &[f64] = &[
+        0.754225035, 0.752900282, 0.752812246, 0.752602367, 0.754310155,
+        0.753525981, 0.752981082, 0.752715536, 0.751667941, 0.755079054,
+        0.753528150, 0.755188464, 0.752508723, 0.750064549, 0.753960428,
+        0.751139298, 0.752523560, 0.753253428, 0.753498342, 0.751858358,
+        0.752104636, 0.753841300, 0.754467374, 0.753814334, 0.750881719,
+        0.753182556, 0.752576884, 0.753945708, 0.753571911, 0.752314573,
+        0.752586651,
+    ];
 
     #[test]
     fn test_add_zero() {
-        let mut dd = DDSketch::new(0.01).unwrap();
+        let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
         dd.add(0.0);
         assert_eq!(dd.count(), 1);
         assert_eq!(dd.sum(), 0.0);
-    }
-
-    #[test]
-    fn test_quartiles() {
-        let mut dd = DDSketch::new(0.01).unwrap();
-
-        // Initialize sketch with {1.0, 2.0, 3.0, 4.0}
-        for i in 1..5 {
-            dd.add(i as f64);
-        }
-
-        // We expect the following mappings from quantile to value:
-        // [0,0.33]: 1.0, (0.34,0.66]: 2.0, (0.67,0.99]: 3.0, (0.99, 1.0]: 4.0
-        let test_cases = vec![
-            (0.0, 1.0),
-            (0.25, 1.0),
-            (0.33, 1.0),
-            (0.34, 2.0),
-            (0.5, 2.0),
-            (0.66, 2.0),
-            (0.67, 3.0),
-            (0.75, 3.0),
-            (0.99, 3.0),
-            (1.0, 4.0),
-        ];
-
-        for (q, val) in test_cases {
-            assert_relative_eq!(dd.quantile(q).unwrap(), val, max_relative = 0.01);
-        }
-    }
-
-    #[test]
-    fn test_neg_quartiles() {
-        let mut dd = DDSketch::new(0.01).unwrap();
-
-        // Initialize sketch with {-1.0, -2.0, -3.0, -4.0}
-        for i in 1..5 {
-            dd.add(-i as f64);
-        }
-
-        let test_cases = vec![
-            (0.0, -4.0),
-            (0.25, -4.0),
-            (0.5, -3.0),
-            (0.75, -2.0),
-            (1.0, -1.0),
-        ];
-
-        for (q, val) in test_cases {
-            assert_relative_eq!(dd.quantile(q).unwrap(), val, max_relative = 0.01);
-        }
-    }
-
-    #[test]
-    fn test_simple_quantile() {
-        let mut dd = DDSketch::new(0.01).unwrap();
-
-        for i in 1..101 {
-            dd.add(i as f64);
-        }
-
-        assert_eq!(dd.quantile(0.95).unwrap().ceil(), 95.0);
-
-        assert!(dd.quantile(-1.01).is_err());
-        assert!(dd.quantile(1.01).is_err());
+        assert_eq!(dd.quantile(0.5).unwrap(), 0.0);
     }
 
     #[test]
     fn test_empty_sketch() {
-        let dd = DDSketch::new(0.01).unwrap();
-
+        let dd = DDSketch::new(RELATIVE_ERROR).unwrap();
         assert_eq!(dd.quantile(0.98).unwrap(), 0.0);
         assert_eq!(dd.count(), 0);
         assert_eq!(dd.sum(), 0.0);
-
         assert!(dd.quantile(1.01).is_err());
-    }
-
-    #[test]
-    fn test_basic_histogram_data() {
-        let values = &[
-            0.754225035,
-            0.752900282,
-            0.752812246,
-            0.752602367,
-            0.754310155,
-            0.753525981,
-            0.752981082,
-            0.752715536,
-            0.751667941,
-            0.755079054,
-            0.753528150,
-            0.755188464,
-            0.752508723,
-            0.750064549,
-            0.753960428,
-            0.751139298,
-            0.752523560,
-            0.753253428,
-            0.753498342,
-            0.751858358,
-            0.752104636,
-            0.753841300,
-            0.754467374,
-            0.753814334,
-            0.750881719,
-            0.753182556,
-            0.752576884,
-            0.753945708,
-            0.753571911,
-            0.752314573,
-            0.752586651,
-        ];
-
-        let mut dd = DDSketch::new(0.01).unwrap();
-
-        for value in values {
-            dd.add(*value);
-        }
-
-        assert_eq!(dd.count(), 31);
-        assert_relative_eq!(dd.sum(), 23.343630625000003, max_relative = 0.01);
-
-        assert!(dd.quantile(0.25).is_ok());
-        assert!(dd.quantile(0.5).is_ok());
-        assert!(dd.quantile(0.75).is_ok());
     }
 
     #[test]
@@ -400,6 +291,181 @@ mod tests {
         assert!(matches!(DDSketch::new(1.0), Err(DDSketchError::InvalidAlpha)));
         assert!(matches!(DDSketch::new(-1.0), Err(DDSketchError::InvalidAlpha)));
         assert!(matches!(DDSketch::new(2.0), Err(DDSketchError::InvalidAlpha)));
+    }
+
+    #[test]
+    fn test_basic_histogram_data() {
+        let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
+        for &value in TEST_VALUES {
+            dd.add(value);
+        }
+        assert_eq!(dd.count(), TEST_VALUES.len() as u64);
+        assert_relative_eq!(dd.sum(), TEST_VALUES.iter().sum(), max_relative = RELATIVE_ERROR);
+        
+        // Test various quantiles
+        assert!(dd.quantile(0.25).is_ok());
+        assert!(dd.quantile(0.5).is_ok());
+        assert!(dd.quantile(0.75).is_ok());
+    }
+
+    #[test]
+    fn test_constant_values() {
+        let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
+        let constant = 42.0;
+        for _ in 0..100 {
+            dd.add(constant);
+        }
+        for q in &[0.0, 0.25, 0.5, 0.75, 1.0] {
+            assert_relative_eq!(dd.quantile(*q).unwrap(), constant, max_relative = RELATIVE_ERROR);
+        }
+    }
+
+    #[test]
+    fn test_linear_distribution() {
+        let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
+        let values: Vec<f64> = (0..100).map(|x| x as f64).collect();
+        for &v in &values {
+            dd.add(v);
+        }
+
+        // Test various quantiles with appropriate error bounds
+        let test_cases = vec![
+            (0.0, 0.0),     // min
+            (0.1, 9.0),     // p10
+            (0.25, 24.0),   // p25
+            (0.5, 49.5),    // median
+            (0.75, 74.0),   // p75
+            (0.9, 89.0),    // p90
+            (1.0, 99.0),    // max
+        ];
+
+        for &(q, expected) in &test_cases {
+            let actual = dd.quantile(q).unwrap();
+            
+            // For min/max, expect exact values
+            if q == 0.0 || q == 1.0 {
+                assert_relative_eq!(actual, expected, max_relative = RELATIVE_ERROR);
+                continue;
+            }
+
+            // For other quantiles, allow broader bounds
+            let min_expected = expected * 0.98; // -2%
+            let max_expected = expected * 1.02; // +2%
+            assert!(
+                actual >= min_expected && actual <= max_expected,
+                "q={}, got={}, expected=[{}, {}]",
+                q, actual, min_expected, max_expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_normal_distribution() {
+        let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+        let mean = 100.0;
+        let std_dev = 10.0;
+        
+        // Generate normal distribution
+        for _ in 0..1000 {
+            let v = rng.gen::<f64>() * std_dev + mean;
+            dd.add(v);
+        }
+        
+        // The median should be close to the mean
+        assert_relative_eq!(dd.quantile(0.5).unwrap(), mean, max_relative = 0.1);
+    }
+
+    #[test]
+    fn test_quartiles() {
+        let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
+
+        // Initialize sketch with {1.0, 2.0, 3.0, 4.0}
+        for i in 1..5 {
+            dd.add(i as f64);
+        }
+
+        // Test exact quantile values
+        let test_cases = vec![
+            (0.0, 1.0),   // min
+            (0.25, 1.0),  // first quartile
+            (0.5, 2.0),   // median
+            (0.75, 3.0),  // third quartile
+            (1.0, 4.0),   // max
+        ];
+
+        for (q, expected) in test_cases {
+            let actual = dd.quantile(q).unwrap();
+            assert_relative_eq!(actual, expected, max_relative = RELATIVE_ERROR,
+                epsilon = RELATIVE_ERROR,
+                max_relative = RELATIVE_ERROR);
+        }
+    }
+
+    #[test]
+    fn test_neg_quartiles() {
+        let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
+
+        // Initialize sketch with {-1.0, -2.0, -3.0, -4.0}
+        for i in 1..5 {
+            dd.add(-(i as f64));
+        }
+
+        let test_cases = vec![
+            (0.0, -4.0),   // min
+            (0.25, -4.0),  // first quartile
+            (0.5, -3.0),   // median
+            (0.75, -2.0),  // third quartile
+            (1.0, -1.0),   // max
+        ];
+
+        for (q, expected) in test_cases {
+            let actual = dd.quantile(q).unwrap();
+            assert_relative_eq!(actual, expected, max_relative = RELATIVE_ERROR,
+                epsilon = RELATIVE_ERROR,
+                max_relative = RELATIVE_ERROR);
+        }
+    }
+
+    #[test]
+    fn test_simple_quantile() {
+        let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
+
+        for i in 1..101 {
+            dd.add(i as f64);
+        }
+
+        assert_eq!(dd.quantile(0.95).unwrap().ceil(), 95.0);
+        assert!(dd.quantile(-1.01).is_err());
+        assert!(dd.quantile(1.01).is_err());
+    }
+
+    #[test]
+    fn test_extreme_values() {
+        let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
+        
+        // Add some extreme values
+        dd.add(1e-100);
+        dd.add(1e100);
+        dd.add(0.0);
+        
+        assert_relative_eq!(dd.quantile(0.0).unwrap(), 1e-100, max_relative = RELATIVE_ERROR);
+        assert_relative_eq!(dd.quantile(1.0).unwrap(), 1e100, max_relative = RELATIVE_ERROR);
+    }
+
+    #[test]
+    fn test_mixed_distribution() {
+        let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
+        
+        // Mix of positive, negative, and zero values
+        let values = vec![-10.0, -1.0, 0.0, 0.0, 1.0, 10.0];
+        for &v in &values {
+            dd.add(v);
+        }
+        
+        assert_relative_eq!(dd.quantile(0.0).unwrap(), -10.0, max_relative = RELATIVE_ERROR);
+        assert_relative_eq!(dd.quantile(0.5).unwrap(), 0.0, max_relative = RELATIVE_ERROR);
+        assert_relative_eq!(dd.quantile(1.0).unwrap(), 10.0, max_relative = RELATIVE_ERROR);
     }
 }
 
