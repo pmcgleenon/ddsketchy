@@ -117,13 +117,11 @@ impl DDSketch {
             return;
         }
 
-        // Update min/max
-        self.min = self.min.min(value);
-        self.max = self.max.max(value);
-
         // Update statistics
         self.count += 1;
         self.sum += value;
+        self.min = self.min.min(value);
+        self.max = self.max.max(value);
 
         // Handle zero case early
         if value == Self::ZERO {
@@ -131,22 +129,23 @@ impl DDSketch {
             return;
         }
 
-        // Compute bucket index
+        // Compute bucket index in one pass
         let abs_value = value.abs();
-        let log_value = abs_value.ln();
-        let scaled_log = log_value * self.inv_ln_gamma;
-        // original mapping: raw = ceil; enforce ≥1
-        let raw = scaled_log.ceil() as isize;
-        let rel = if raw < 1 { 1 } else { raw };
-        
-        // Compute final index with bounds checking
-        let idx = if value >= Self::ZERO {
-            self.offset.saturating_add(rel as usize)
+        let idx = if abs_value == Self::ZERO {
+            self.offset
         } else {
-            self.offset.saturating_sub(rel as usize)
+            let scaled_log = abs_value.ln() * self.inv_ln_gamma;
+            let raw = scaled_log.ceil() as isize;
+            let rel = if raw < 1 { 1 } else { raw };
+            
+            if value >= Self::ZERO {
+                self.offset.saturating_add(rel as usize)
+            } else {
+                self.offset.saturating_sub(rel as usize)
+            }
         };
-        
-        // Update bucket count if within bounds
+
+        // Update bucket count
         if idx < self.bins.bins.len() {
             self.bins.bins[idx] += 1;
         } else {
@@ -155,7 +154,8 @@ impl DDSketch {
         }
 
         // Check if we need to collapse buckets
-        if self.count_non_empty_buckets() > self.max_bins {
+        // Only check every N inserts to amortize cost
+        if self.count & 0xFF == 0 && self.count_non_empty_buckets() > self.max_bins {
             self.collapse_smallest_buckets();
         }
     }
