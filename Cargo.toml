@@ -23,7 +23,7 @@ path = "benches/profiling.rs"
 rand = "0.8"
 
 [dev-dependencies]
-criterion = "0.4"
+criterion = "0.5"
 approx = "0.5"
 # existing Go-port implementation
 sketches-ddsketch = "0.3"
