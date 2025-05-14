@@ -467,5 +467,77 @@ mod tests {
         assert_relative_eq!(dd.quantile(0.5).unwrap(), 0.0, max_relative = RELATIVE_ERROR);
         assert_relative_eq!(dd.quantile(1.0).unwrap(), 10.0, max_relative = RELATIVE_ERROR);
     }
+
+    #[test]
+    fn test_merge_operations() {
+        let mut d1 = DDSketch::new(RELATIVE_ERROR).unwrap();
+        let mut d2 = DDSketch::new(RELATIVE_ERROR).unwrap();
+
+        // Simple constant values like in the sketches-ddsketch example
+        d1.add(1.0);
+        d2.add(2.0);
+        d2.add(2.0);
+
+        // Merge d2 into d1
+        d1.merge(&d2).unwrap();
+
+        // Basic count check like in sketches-ddsketch
+        assert_eq!(d1.count(), 3);
+
+        // Additional thorough checks
+        assert_relative_eq!(d1.sum(), 5.0, max_relative = RELATIVE_ERROR);
+        assert_relative_eq!(d1.quantile(0.0).unwrap(), 1.0, max_relative = RELATIVE_ERROR);
+        assert_relative_eq!(d1.quantile(1.0).unwrap(), 2.0, max_relative = RELATIVE_ERROR);
+        
+        // For the median, we expect it to be 2.0 since we have {1.0, 2.0, 2.0}
+        let median = d1.quantile(0.5).unwrap();
+        assert!(
+            (median - 2.0).abs() <= 2.0 * RELATIVE_ERROR,
+            "median {} not within {}% of expected 2.0",
+            median,
+            RELATIVE_ERROR * 100.0
+        );
+    }
+
+    #[test]
+    fn test_merge_error_cases() {
+        let mut d1 = DDSketch::new(0.01).unwrap();
+        let mut d2 = DDSketch::new(0.02).unwrap(); // Different alpha
+
+        d1.add(1.0);
+        d2.add(2.0);
+
+        // Test alpha mismatch
+        assert!(matches!(d1.merge(&d2), Err(DDSketchError::AlphaMismatch)));
+
+        // Test bin count mismatch (would require modifying the struct to have different max_bins)
+        // This is more of a theoretical test since we can't easily create sketches with different bin counts
+    }
+
+    #[test]
+    fn test_merge_empty_sketches() {
+        let mut d1 = DDSketch::new(RELATIVE_ERROR).unwrap();
+        let d2 = DDSketch::new(RELATIVE_ERROR).unwrap();
+
+        // Merge empty sketch
+        d1.merge(&d2).unwrap();
+        assert_eq!(d1.count(), 0);
+        assert_eq!(d1.sum(), 0.0);
+    }
+
+    #[test]
+    fn test_merge_with_extreme_values() {
+        let mut d1 = DDSketch::new(RELATIVE_ERROR).unwrap();
+        let mut d2 = DDSketch::new(RELATIVE_ERROR).unwrap();
+
+        d1.add(1e-100);
+        d2.add(1e100);
+
+        d1.merge(&d2).unwrap();
+
+        assert_eq!(d1.count(), 2);
+        assert_relative_eq!(d1.quantile(0.0).unwrap(), 1e-100, max_relative = RELATIVE_ERROR);
+        assert_relative_eq!(d1.quantile(1.0).unwrap(), 1e100, max_relative = RELATIVE_ERROR);
+    }
 }
 
