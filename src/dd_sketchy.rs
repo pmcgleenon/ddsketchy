@@ -44,6 +44,7 @@ pub struct DDSketch {
     alpha: f64,
     max_bins: usize,
     offset: usize,
+    non_empty_buckets: usize,
 }
 
 impl DDSketch {
@@ -70,6 +71,7 @@ impl DDSketch {
             alpha,
             max_bins: 4096,
             offset: 2048,
+            non_empty_buckets: 0,
         })
     }
 
@@ -102,12 +104,9 @@ impl DDSketch {
             let (lower_idx, higher_idx) = if i < j { (i, j) } else { (j, i) };
             self.bins.bins[higher_idx] += self.bins.bins[lower_idx];
             self.bins.bins[lower_idx] = 0;
+            // Decrement non_empty_buckets since we merged two buckets
+            self.non_empty_buckets -= 1;
         }
-    }
-
-    /// Count non-empty buckets
-    fn count_non_empty_buckets(&self) -> usize {
-        self.bins.bins.iter().filter(|&&count| count > 0).count()
     }
 
     /// Add a value into the sketch (ignores NaN/Inf).
@@ -125,6 +124,9 @@ impl DDSketch {
 
         // Handle zero case early
         if value == Self::ZERO {
+            if self.bins.bins[self.offset] == 0 {
+                self.non_empty_buckets += 1;
+            }
             self.bins.bins[self.offset] += 1;
             return;
         }
@@ -150,11 +152,14 @@ impl DDSketch {
             }
         };
 
-        // Update bucket count
+        // Update bucket count and non_empty_buckets
+        if self.bins.bins[idx] == 0 {
+            self.non_empty_buckets += 1;
+        }
         self.bins.bins[idx] += 1;
 
         // Check if we need to collapse buckets
-        if self.count & 0xFF == 0 && self.count_non_empty_buckets() > self.max_bins {
+        if self.count & 0xFF == 0 && self.non_empty_buckets > self.max_bins {
             self.collapse_smallest_buckets();
         }
     }
@@ -172,8 +177,14 @@ impl DDSketch {
             return Err(DDSketchError::BinCountMismatch);
         }
         
+        // Update non_empty_buckets count
         for (a, b) in self.bins.bins.iter_mut().zip(other.bins.bins.iter()) {
-            *a += *b;
+            if *b > 0 {
+                if *a == 0 {
+                    self.non_empty_buckets += 1;
+                }
+                *a += *b;
+            }
         }
         self.count += other.count;
         self.sum += other.sum;
