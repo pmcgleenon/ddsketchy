@@ -594,5 +594,18 @@ mod tests {
         // that results in exact values for constant inputs
         assert_eq!(q, 2.0);
     }
+
+    #[test]
+    fn test_single_value_quantile() {
+        let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
+        let test_value = 1234.0;
+        dd.add(test_value);
+
+        // Test various quantiles - they should all return the same value
+        let test_quantiles = vec![0.0, 0.25, 0.5, 0.75, 1.0];
+        for q in test_quantiles {
+            assert_eq!(test_value, dd.quantile(q).unwrap());
+        }
+    }
 }
 

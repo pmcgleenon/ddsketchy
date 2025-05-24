@@ -16,8 +16,16 @@ name = "ddsketch_bench"
 harness = false
 
 [[bin]]
-name = "profiling"
-path = "benches/profiling.rs"
+name = "add_operations"
+path = "bin/add_operations.rs"
+
+[[bin]]
+name = "merge_operations"
+path = "bin/merge_operations.rs"
+
+[[bin]]
+name = "quantile_operations"
+path = "bin/quantile_operations.rs"
 
 [dependencies]
 rand = "0.8"
@@ -29,5 +37,5 @@ approx = "0.5"
 sketches-ddsketch = "0.3"
 
 [profile.release]
-debug = true        # include debug symbols for profiling
-opt-level = 3       # full optimizations
+debug = true
+opt-level = 0       
