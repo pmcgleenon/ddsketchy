@@ -2,6 +2,7 @@
 
 This is a Rust implementation of the [DDSketch](https://arxiv.org/pdf/1908.10693.pdf) quantile sketch algorithm. 
 DDSketch is a fully-mergeable quantile sketch with relative-error guarantees and is extremely fast.
+It has no dependencies to other crates.
 
 # dd-sketchy Features
 
