@@ -28,7 +28,7 @@ name = "quantile_operations"
 path = "bin/quantile_operations.rs"
 
 [dependencies]
-rand = "0.8"
+rand = "0.9"
 
 [dev-dependencies]
 criterion = "0.6"
