@@ -211,7 +211,7 @@ impl DDSketch {
     /// Estimate the q-th quantile (q in [0,1]).
     #[inline(always)]
     pub fn quantile(&self, q: f64) -> Result<f64, DDSketchError> {
-        if q < 0.0 || q > 1.0 {
+        if !(0.0..=1.0).contains(&q) {
             return Err(DDSketchError::InvalidQuantile);
         }
         if self.count == 0 {
