@@ -333,4 +333,47 @@ fn test_single_value_quantile() {
     for q in test_quantiles {
         assert_eq!(test_value, dd.quantile(q).unwrap());
     }
+}
+
+#[test]
+fn test_detailed_quartiles() -> Result<(), DDSketchError> {
+    let alpha = 0.01; // relative accuracy of 1%
+    let mut sketch = DDSketch::new(alpha)?;
+
+    // Add values: {1.0, 2.0, 3.0, 4.0}
+    for i in 1..=4 {
+        sketch.add(i as f64);
+    }
+
+    // These are the "ideal" quantile values based on exact rank.
+    // DDSketch does NOT guarantee exact values, but we check that
+    // results are within alpha relative error of these expected values.
+    let test_cases = vec![
+        (0.0, 1.0),
+        (0.25, 1.0),
+        (0.26, 1.0),
+        (0.5, 2.0),
+        (0.51, 2.0),
+        (0.75, 3.0),
+        (0.76, 3.0),
+        (1.0, 4.0),
+    ];
+
+    for (q, expected) in test_cases {
+        let actual = sketch.quantile(q)?;
+        // DDSketch guarantees the returned value is within (1 ± α) * expected
+        let lower = expected * (1.0 - alpha);
+        let upper = expected * (1.0 + alpha);
+        assert!(
+            actual >= lower && actual <= upper,
+            "Quantile {} returned value {}, expected approximately {} (bounds: [{}, {}])",
+            q,
+            actual,
+            expected,
+            lower,
+            upper
+        );
+    }
+
+    Ok(())
 } 
