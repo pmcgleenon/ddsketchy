@@ -1,4 +1,4 @@
-![DDSketchy Logo](content/sketchy.jpg)
+![DDSketchy Logo](assets/sketchy.jpg)
 
 # dd-sketchy
 
