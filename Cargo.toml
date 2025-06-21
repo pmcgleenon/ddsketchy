@@ -3,7 +3,7 @@ name = "dd_sketchy"
 version = "0.1.0"
 authors = ["Patrick McGleenon"]
 edition = "2021"
-description = "DD Sketch in Rust, benchmarked against sketches-ddsketch"
+description = "DD Sketch in Rust"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/pmcgleenon/ddsketchy"
 
@@ -15,27 +15,17 @@ harness = false
 name = "ddsketch_bench"
 harness = false
 
-[[bin]]
-name = "add_operations"
-path = "bin/add_operations.rs"
-
-[[bin]]
-name = "merge_operations"
-path = "bin/merge_operations.rs"
-
-[[bin]]
-name = "quantile_operations"
-path = "bin/quantile_operations.rs"
-
 [dependencies]
-rand = "0.9"
+# No runtime dependencies - core DDSketch is dependency-free
 
 [dev-dependencies]
+rand = "0.9"
+rand_distr = "0.5.1"
 criterion = "0.6"
 approx = "0.5"
-# existing Go-port implementation
+# existing Go-port implementation for comparison
 sketches-ddsketch = "0.3"
 
 [profile.release]
-debug = true
-opt-level = 0       
+#debug = true
+#opt-level = 0       

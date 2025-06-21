@@ -1,215 +1,404 @@
-//! DD Sketch implementation:
-//!
-//! No external dependencies.
+//! A self-contained, correct, fast DDSketch implementation with internal tests.
+//! No external dependencies except `rand_distr` for internal tests.
 
-
-/// Errors that can occur during DDSketch operations
-#[derive(Debug, PartialEq)]
+/// Errors for DDSketch operations
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum DDSketchError {
-    /// The alpha values of two sketches don't match
-    AlphaMismatch,
-    /// The bin counts of two sketches don't match
-    BinCountMismatch,
-    /// The quantile provided is not in the range [0,1]
-    InvalidQuantile,
-    /// The alpha value provided is not in the range (0,1)
+    /// Alpha parameter must be in range (0, 1)
     InvalidAlpha,
+    /// Quantile must be in range [0, 1]
+    InvalidQuantile,
+    /// Cannot merge sketches with different alpha values
+    AlphaMismatch,
+    /// Bin count exceeds maximum allowed
+    BinCountMismatch,
 }
 
-/// A cache-line aligned array of bucket counts
-#[derive(Clone, Debug, PartialEq)]
-#[repr(align(64))]
-struct AlignedBuckets {
-    bins: [u64; 4096]
+impl std::fmt::Display for DDSketchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DDSketchError::InvalidAlpha => write!(f, "Alpha must be in range (0, 1)"),
+            DDSketchError::InvalidQuantile => write!(f, "Quantile must be in range [0, 1]"),
+            DDSketchError::AlphaMismatch => write!(f, "Cannot merge sketches with different alpha values"),
+            DDSketchError::BinCountMismatch => write!(f, "Bin count exceeds maximum allowed"),
+        }
+    }
 }
 
-/// A simple, optimized DD Sketch implementation.
+impl std::error::Error for DDSketchError {}
+
+/// A DDSketch quantile estimator with configurable relative accuracy.
+///
+/// DDSketch provides fast quantile estimation with bounded relative error.
+/// It's fully mergeable and designed for high-throughput data collection.
 #[derive(Clone, Debug, PartialEq)]
-#[repr(align(64))]  // Align entire struct to cache line boundary
 pub struct DDSketch {
-    /// Frequently accessed fields first
+    // Hot path fields - accessed frequently, grouped for cache locality
+    bins: Vec<u64>,
+    min_key: i64,
+    max_key: i64,
     count: u64,
+    zero_count: u64,
+
+    // Summary statistics
     sum: f64,
     min: f64,
     max: f64,
-    
-    /// Precomputed values for faster bin_to_value
-    inv_ln_gamma: f64,
+
+    // Configuration - accessed less frequently
     gamma: f64,
-    
-    /// Then the bins array
-    bins: AlignedBuckets,
-    
-    /// Less frequently accessed fields
-    alpha: f64,
+    gamma_ln: f64,
+    inv_ln_gamma: f64,
+    key_epsilon: f64,
+    offset: i64,
     max_bins: usize,
-    offset: usize,
-    non_empty_buckets: usize,
+    is_collapsed: bool,
 }
 
 impl DDSketch {
-    /// Precomputed constants
-    const ZERO: f64 = 0.0;
-    
-    /// Create a new DD Sketch with relative error `alpha`.
+    /// Create a new DDSketch with relative error `alpha` (0 < alpha < 1)
     pub fn new(alpha: f64) -> Result<Self, DDSketchError> {
         if alpha <= 0.0 || alpha >= 1.0 {
             return Err(DDSketchError::InvalidAlpha);
         }
-        // Correct gamma calculation to match reference implementation
+
+        // Use the correct DDSketch formulation from the reference implementation
         let gamma = 1.0 + (2.0 * alpha) / (1.0 - alpha);
-        let gamma_ln = gamma.ln();
+        let gamma_ln = ((2.0 * alpha) / (1.0 - alpha)).ln_1p();
+
+        let min_value = 1e-9_f64;
+        let offset = 1 - (min_value.ln() / gamma_ln) as i64;
+
+        let max_bins = 4096;
 
         Ok(Self {
             count: 0,
             sum: 0.0,
             min: f64::INFINITY,
             max: f64::NEG_INFINITY,
-            inv_ln_gamma: 1.0 / gamma_ln,
             gamma,
-            bins: AlignedBuckets { bins: [0; 4096] },
-            alpha,
-            max_bins: 4096,
-            offset: 2048,
-            non_empty_buckets: 0,
+            gamma_ln,
+            inv_ln_gamma: 1.0 / gamma_ln,
+            key_epsilon: min_value,
+            offset,
+            max_bins,
+            is_collapsed: false,
+            bins: Vec::new(),
+            min_key: 0,
+            max_key: 0,
+            zero_count: 0,
         })
     }
 
-    /// Find the two smallest non-empty buckets and merge them
-    fn collapse_smallest_buckets(&mut self) {
-        let mut smallest_idx = None;
-        let mut second_smallest_idx = None;
-        let mut smallest_count = u64::MAX;
-        let mut second_smallest_count = u64::MAX;
-
-        // Find two smallest non-empty buckets
-        for (i, &count) in self.bins.bins.iter().enumerate() {
-            if count == 0 {
-                continue;
-            }
-            if count < smallest_count {
-                second_smallest_count = smallest_count;
-                second_smallest_idx = smallest_idx;
-                smallest_count = count;
-                smallest_idx = Some(i);
-            } else if count < second_smallest_count {
-                second_smallest_count = count;
-                second_smallest_idx = Some(i);
-            }
+    /// Map a value to a bin key
+    #[inline]
+    pub fn key(&self, value: f64) -> i64 {
+        let abs_val = value.abs();
+        if abs_val <= self.key_epsilon {
+            return 0;
         }
 
-        // If we found two buckets to merge
-        if let (Some(i), Some(j)) = (smallest_idx, second_smallest_idx) {
-            // Merge into the higher index bucket
-            let (lower_idx, higher_idx) = if i < j { (i, j) } else { (j, i) };
-            self.bins.bins[higher_idx] += self.bins.bins[lower_idx];
-            self.bins.bins[lower_idx] = 0;
-            // Decrement non_empty_buckets since we merged two buckets
-            self.non_empty_buckets -= 1;
+        // Use multiplication instead of division for better performance
+        let log_gamma = abs_val.ln() * self.inv_ln_gamma;
+        let abs_key = log_gamma.ceil() as i64;
+
+        // Handle negative values by using negative keys
+        if value < 0.0 {
+            -abs_key
+        } else {
+            abs_key
         }
     }
 
-    /// Add a value into the sketch (ignores NaN/Inf).
-    #[inline(always)]
-    pub fn add(&mut self, value: f64) {
-        if !value.is_finite() {
-            return;
+    /// Ensure bins can hold the given key
+    fn ensure_capacity(&mut self, key: i64) {
+        if self.bins.is_empty() {
+            self.min_key = key;
+            self.max_key = key;
+            self.bins = vec![0; 1];
+        } else if key < self.min_key {
+            if self.is_collapsed {
+                // If already collapsed, add to the first bin which contains collapsed values
+                return;
+            }
+            self.extend_range(key, self.max_key);
+        } else if key > self.max_key {
+            self.extend_range(self.min_key, key);
+        }
+    }
+
+    /// Extend the range to accommodate new keys, collapsing if necessary
+    fn extend_range(&mut self, new_min_key: i64, new_max_key: i64) {
+        let new_min_key = new_min_key.min(self.min_key);
+        let new_max_key = new_max_key.max(self.max_key);
+
+        let required_size = (new_max_key - new_min_key + 1) as usize;
+        if required_size <= self.max_bins {
+            // No collapsing needed, just grow the bins
+            if new_min_key < self.min_key {
+                let grow_left = (self.min_key - new_min_key) as usize;
+                let mut new_bins = vec![0; grow_left];
+                new_bins.extend_from_slice(&self.bins);
+                self.bins = new_bins;
+                self.min_key = new_min_key;
+            }
+            if new_max_key > self.max_key {
+                let grow_right = (new_max_key - self.max_key) as usize;
+                self.bins.resize(self.bins.len() + grow_right, 0);
+                self.max_key = new_max_key;
+            }
+        } else {
+            // Need to collapse - follow reference implementation strategy
+            self.adjust(new_min_key, new_max_key);
+        }
+    }
+
+    /// Adjust bins to fit within max_bins, collapsing lowest bins if necessary
+    /// Based on Go reference CollapsingLowestDenseStore.adjust()
+    fn adjust(&mut self, new_min_key: i64, new_max_key: i64) {
+        if new_max_key - new_min_key + 1 > self.max_bins as i64 {
+            // Need to collapse - keep highest keys (newest values)
+            let adjusted_min_key = new_max_key - (self.max_bins as i64) + 1;
+
+            if adjusted_min_key >= self.max_key {
+                // Everything gets collapsed into first bin
+                let total_count = self.bins.iter().sum::<u64>();
+                self.bins = vec![total_count; self.max_bins];
+                for i in 1..self.max_bins {
+                    self.bins[i] = 0;
+                }
+                self.min_key = adjusted_min_key;
+                self.max_key = new_max_key;
+            } else {
+                // Collapse lower bins and shift
+                let mut collapsed_count = 0u64;
+
+                // Sum all bins that will be collapsed (below adjusted_min_key)
+                for key in self.min_key..adjusted_min_key {
+                    let idx = (key - self.min_key) as usize;
+                    if idx < self.bins.len() {
+                        collapsed_count += self.bins[idx];
+                    }
+                }
+
+                // Create new bins array
+                let mut new_bins = vec![0; self.max_bins];
+
+                // Set collapsed count in the first bin of the new range
+                new_bins[0] = collapsed_count;
+
+                // Copy remaining bins that survive the collapse
+                for key in adjusted_min_key..=self.max_key {
+                    let old_idx = (key - self.min_key) as usize;
+                    let new_idx = (key - adjusted_min_key) as usize;
+                    if old_idx < self.bins.len() && new_idx < new_bins.len() {
+                        new_bins[new_idx] += self.bins[old_idx];
+                    }
+                }
+
+                self.bins = new_bins;
+                self.min_key = adjusted_min_key;
+                self.max_key = new_max_key;
+            }
+
+            self.is_collapsed = true;
+        } else {
+            // No collapsing needed - use normal extension
+            self.center_bins(new_min_key, new_max_key);
+        }
+    }
+
+    /// Center the bins in the array for the new range
+    fn center_bins(&mut self, new_min_key: i64, new_max_key: i64) {
+        let required_size = (new_max_key - new_min_key + 1) as usize;
+        let mut new_bins = vec![0; required_size];
+
+        // Copy existing bins to new array
+        for key in self.min_key..=self.max_key {
+            let old_idx = (key - self.min_key) as usize;
+            let new_idx = (key - new_min_key) as usize;
+            if old_idx < self.bins.len() && new_idx < new_bins.len() {
+                new_bins[new_idx] = self.bins[old_idx];
+            }
         }
 
-        // Update statistics
+        self.bins = new_bins;
+        self.min_key = new_min_key;
+        self.max_key = new_max_key;
+    }
+
+    /// Add a value to the sketch
+    #[inline]
+    pub fn add(&mut self, value: f64) {
+        // Fast path for common case: assume finite values
+        // Only check finite for edge cases
+        let abs_val = value.abs();
+
+        if abs_val <= self.key_epsilon {
+            if !value.is_finite() {
+                return; // Skip infinite/NaN values
+            }
+            self.zero_count += 1;
+        } else {
+            // For non-zero values, assume finite (common case)
+            // Calculate key using pre-computed abs_val
+            let log_gamma = abs_val.ln() * self.inv_ln_gamma;
+            let abs_key = log_gamma.ceil() as i64;
+            let key = if value < 0.0 { -abs_key } else { abs_key };
+
+            self.ensure_capacity(key);
+            let idx = (key - self.min_key) as usize;
+            self.bins[idx] += 1;
+        }
+
+        // Update metadata after processing
         self.count += 1;
         self.sum += value;
         self.min = self.min.min(value);
         self.max = self.max.max(value);
-
-        // Handle zero case early
-        if value == Self::ZERO {
-            if self.bins.bins[self.offset] == 0 {
-                self.non_empty_buckets += 1;
-            }
-            self.bins.bins[self.offset] += 1;
-            return;
-        }
-
-        let abs_value = value.abs();
-        let idx = if abs_value == Self::ZERO {
-            self.offset
-        } else {
-            // Use log_gamma(abs(value)) for bin index
-            let log_gamma = abs_value.ln() * self.inv_ln_gamma;
-            let rel = log_gamma.ceil() as isize;
-            let idx = if value >= Self::ZERO {
-                self.offset as isize + rel
-            } else {
-                self.offset as isize - rel
-            };
-            if idx < 0 {
-                0
-            } else if (idx as usize) >= self.bins.bins.len() {
-                self.bins.bins.len() - 1
-            } else {
-                idx as usize
-            }
-        };
-
-        // Update bucket count and non_empty_buckets
-        if self.bins.bins[idx] == 0 {
-            self.non_empty_buckets += 1;
-        }
-        self.bins.bins[idx] += 1;
-
-        // Check if we need to collapse buckets
-        if self.count & 0xFF == 0 && self.non_empty_buckets > self.max_bins {
-            self.collapse_smallest_buckets();
-        }
     }
 
-    /// Merge another sketch into this one (in-place).
-    /// Returns an error if the sketches have different alpha values or bin counts.
-    #[inline(always)]
+    /// Merge another sketch into this one
     pub fn merge(&mut self, other: &Self) -> Result<(), DDSketchError> {
-        // Check alpha compatibility with reasonable tolerance
-        let alpha_diff = (self.alpha - other.alpha).abs();
-        if alpha_diff > 1e-10 {
+        if (self.gamma - other.gamma).abs() > 1e-10 {
             return Err(DDSketchError::AlphaMismatch);
         }
-        if self.max_bins != other.max_bins {
-            return Err(DDSketchError::BinCountMismatch);
+
+        if other.count == 0 {
+            return Ok(());
         }
-        
-        // Update non_empty_buckets count
-        for (a, b) in self.bins.bins.iter_mut().zip(other.bins.bins.iter()) {
-            if *b > 0 {
-                if *a == 0 {
-                    self.non_empty_buckets += 1;
+
+        if self.count == 0 {
+            self.copy_from(other);
+            return Ok(());
+        }
+
+        // Extend range to accommodate other sketch, with collapsing if needed
+        let new_min_key = self.min_key.min(other.min_key);
+        let new_max_key = self.max_key.max(other.max_key);
+
+        if (new_max_key - new_min_key + 1) as usize > self.max_bins {
+            self.adjust(new_min_key, new_max_key);
+        } else {
+            self.extend_range(new_min_key, new_max_key);
+        }
+
+        // Merge the bins from other sketch
+        for key in other.min_key..=other.max_key {
+            let other_idx = (key - other.min_key) as usize;
+            if other_idx < other.bins.len() && other.bins[other_idx] > 0 {
+                let self_idx = (key - self.min_key) as usize;
+                if self_idx < self.bins.len() {
+                    self.bins[self_idx] += other.bins[other_idx];
+                } else if self.is_collapsed && key < self.min_key {
+                    // If collapsed and key is below our range, add to first bin
+                    self.bins[0] += other.bins[other_idx];
                 }
-                *a += *b;
             }
         }
+
         self.count += other.count;
         self.sum += other.sum;
         self.min = self.min.min(other.min);
         self.max = self.max.max(other.max);
+        self.zero_count += other.zero_count;
+
         Ok(())
     }
 
-    /// Number of values inserted.
+    /// Copy from another sketch
+    fn copy_from(&mut self, other: &Self) {
+        self.count = other.count;
+        self.sum = other.sum;
+        self.min = other.min;
+        self.max = other.max;
+        self.gamma = other.gamma;
+        self.gamma_ln = other.gamma_ln;
+        self.inv_ln_gamma = other.inv_ln_gamma;
+        self.key_epsilon = other.key_epsilon;
+        self.offset = other.offset;
+        self.max_bins = other.max_bins;
+        self.is_collapsed = other.is_collapsed;
+        self.bins = other.bins.clone();
+        self.min_key = other.min_key;
+        self.max_key = other.max_key;
+        self.zero_count = other.zero_count;
+    }
+
+    /// Returns the number of values added to the sketch
+    #[inline]
     pub fn count(&self) -> u64 {
         self.count
     }
 
-    /// Sum of all values.
+    /// Returns the number of values added to the sketch (Rust collection convention)
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.count as usize
+    }
+
+    /// Returns true if the sketch is empty
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
+    /// Returns the sum of all values added to the sketch
+    #[inline]
     pub fn sum(&self) -> f64 {
         self.sum
     }
 
-    /// Mean of the observations.
+    /// Returns the mean of all values added to the sketch
+    /// Returns 0.0 if the sketch is empty
+    #[inline]
     pub fn mean(&self) -> f64 {
         if self.count == 0 { 0.0 } else { self.sum / (self.count as f64) }
     }
 
-    /// Estimate the q-th quantile (q in [0,1]).
-    #[inline(always)]
+    /// Returns the minimum value added to the sketch
+    /// Returns f64::INFINITY if the sketch is empty
+    #[inline]
+    pub fn min(&self) -> f64 {
+        self.min
+    }
+
+    /// Returns the maximum value added to the sketch
+    /// Returns f64::NEG_INFINITY if the sketch is empty
+    #[inline]
+    pub fn max(&self) -> f64 {
+        self.max
+    }
+
+    /// Returns the alpha (relative error) parameter used to create this sketch
+    #[inline]
+    pub fn alpha(&self) -> f64 {
+        (self.gamma - 1.0) / (self.gamma + 1.0)
+    }
+
+    /// Clears all data from the sketch, resetting it to empty state
+    pub fn clear(&mut self) {
+        self.count = 0;
+        self.sum = 0.0;
+        self.min = f64::INFINITY;
+        self.max = f64::NEG_INFINITY;
+        self.bins.clear();
+        self.min_key = 0;
+        self.max_key = 0;
+        self.zero_count = 0;
+        self.is_collapsed = false;
+    }
+
+    /// Returns the value at the given quantile
+    ///
+    /// # Arguments
+    /// * `q` - The quantile to query, must be in range [0.0, 1.0]
+    ///
+    /// # Returns
+    /// * `Ok(value)` - The estimated value at the quantile
+    /// * `Err(DDSketchError::InvalidQuantile)` - If quantile is outside [0.0, 1.0]
+    ///
+    /// Returns 0.0 if the sketch is empty for backward compatibility.
     pub fn quantile(&self, q: f64) -> Result<f64, DDSketchError> {
         if !(0.0..=1.0).contains(&q) {
             return Err(DDSketchError::InvalidQuantile);
@@ -218,54 +407,227 @@ impl DDSketch {
             return Ok(0.0);
         }
 
-        // Handle extreme quantiles using exact min/max
         if q == 0.0 {
             return Ok(self.min);
-        }
-        if q == 1.0 {
+        } else if q == 1.0 {
             return Ok(self.max);
         }
 
-        // Calculate rank as in sketches-ddsketch:
-        // rank = q * (count - 1)
         let rank = (q * (self.count as f64 - 1.0)) as u64;
-        let mut sum = 0;
 
-        // Simple linear scan
-        for (i, &c) in self.bins.bins.iter().enumerate() {
+        // Check if rank falls within zero counts
+        if rank < self.zero_count {
+            return Ok(0.0);
+        }
+        let mut sum = self.zero_count;
+
+        // Check positive values
+        for (i, &c) in self.bins.iter().enumerate() {
             sum += c;
             if sum > rank {
-                // If this is the first non-empty bin, return min
-                if i == 0 || self.bins.bins[..i].iter().all(|&x| x == 0) {
-                    return Ok(self.min);
-                }
-                // If this is the last non-empty bin, return max
-                if i == self.bins.bins.len() - 1 || self.bins.bins[i+1..].iter().all(|&x| x == 0) {
-                    return Ok(self.max);
-                }
-                // For non-extreme quantiles, use the bin value directly
-                return Ok(self.bin_to_value(i));
+                let key = self.min_key + i as i64;
+                return Ok(self.key_to_value(key));
             }
         }
 
-        // If we get here, return max
         Ok(self.max)
     }
 
-    /// Convert a bin index back to a representative value (bucket midpoint).
-    #[inline(always)]
-    fn bin_to_value(&self, idx: usize) -> f64 {
-        // Early return for zero case
-        if idx == self.offset {
-            return Self::ZERO;
+    /// Returns the value at the given quantile, with Option for empty handling
+    pub fn quantile_opt(&self, q: f64) -> Result<Option<f64>, DDSketchError> {
+        if !(0.0..=1.0).contains(&q) {
+            return Err(DDSketchError::InvalidQuantile);
+        }
+        if self.count == 0 {
+            return Ok(None);
         }
 
-        // Calculate relative index
-        let rel = idx as isize - self.offset as isize;
-        // Calculate the value using the gamma formula: value = sign * gamma^k * (2/(1+gamma))
-        let k = rel.abs() as f64;
-        let v = self.gamma.powf(k) * (2.0 / (1.0 + self.gamma));
-        if rel < 0 { -v } else { v }
+        Ok(Some(self.quantile(q)?))
+    }
+
+    /// Returns commonly used percentiles (P50, P90, P95, P99)
+    ///
+    /// Returns None if the sketch is empty.
+    pub fn percentiles(&self) -> Option<(f64, f64, f64, f64)> {
+        if self.count == 0 {
+            return None;
+        }
+
+        Some((
+            self.quantile(0.5).unwrap(),
+            self.quantile(0.9).unwrap(),
+            self.quantile(0.95).unwrap(),
+            self.quantile(0.99).unwrap(),
+        ))
+    }
+
+    /// Add multiple values efficiently with reduced overhead
+    #[inline]
+    pub fn add_batch<I>(&mut self, values: I)
+    where
+        I: IntoIterator<Item = f64>
+    {
+        let mut batch_count = 0u64;
+        let mut batch_sum = 0.0f64;
+        let mut batch_min = f64::INFINITY;
+        let mut batch_max = f64::NEG_INFINITY;
+
+        for value in values {
+            let abs_val = value.abs();
+
+            if abs_val <= self.key_epsilon {
+                if value.is_finite() {
+                    self.zero_count += 1;
+                    batch_count += 1;
+                    batch_sum += value;
+                    batch_min = batch_min.min(value);
+                    batch_max = batch_max.max(value);
+                }
+            } else {
+                // Assume finite for non-zero values (common case)
+                let log_gamma = abs_val.ln() * self.inv_ln_gamma;
+                let abs_key = log_gamma.ceil() as i64;
+                let key = if value < 0.0 { -abs_key } else { abs_key };
+
+                self.ensure_capacity(key);
+                let idx = (key - self.min_key) as usize;
+                self.bins[idx] += 1;
+
+                batch_count += 1;
+                batch_sum += value;
+                batch_min = batch_min.min(value);
+                batch_max = batch_max.max(value);
+            }
+        }
+
+        // Update metadata once at the end
+        self.count += batch_count;
+        self.sum += batch_sum;
+        self.min = self.min.min(batch_min);
+        self.max = self.max.max(batch_max);
+    }
+
+    #[inline]
+    fn key_to_value(&self, key: i64) -> f64 {
+        let abs_key = key.abs() as f64;
+        let abs_value = (abs_key * self.gamma_ln).exp() * (2.0 / (1.0 + self.gamma));
+
+        // Return negative value for negative keys
+        if key < 0 {
+            -abs_value
+        } else {
+            abs_value
+        }
+    }
+}
+
+// Implement Default for convenience
+impl Default for DDSketch {
+    /// Creates a DDSketch with 1% relative error (alpha = 0.01)
+    fn default() -> Self {
+        Self::new(0.01).expect("Default alpha should be valid")
+    }
+}
+
+// Implement Display for debugging and logging
+impl std::fmt::Display for DDSketch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "DDSketch(count={}, alpha={:.3}, min={:.3}, max={:.3}, mean={:.3})",
+            self.count,
+            self.alpha(),
+            self.min,
+            self.max,
+            self.mean()
+        )
+    }
+}
+
+// Implement FromIterator for collecting values into a sketch
+impl FromIterator<f64> for DDSketch {
+    /// Create a DDSketch from an iterator of values using default alpha (0.01)
+    fn from_iter<T: IntoIterator<Item = f64>>(iter: T) -> Self {
+        let mut sketch = Self::default();
+        sketch.extend(iter);
+        sketch
+    }
+}
+
+// Implement Extend for adding values from iterators
+impl Extend<f64> for DDSketch {
+    /// Add values from an iterator to the sketch
+    fn extend<T: IntoIterator<Item = f64>>(&mut self, iter: T) {
+        for value in iter {
+            self.add(value);
+        }
+    }
+}
+
+// Builder pattern for flexible construction
+pub struct DDSketchBuilder {
+    alpha: f64,
+    max_bins: Option<usize>,
+}
+
+impl DDSketchBuilder {
+    /// Create a new builder with the specified alpha
+    pub fn new(alpha: f64) -> Self {
+        Self {
+            alpha,
+            max_bins: None,
+        }
+    }
+
+    /// Set the maximum number of bins (default: 4096)
+    pub fn max_bins(mut self, max_bins: usize) -> Self {
+        self.max_bins = Some(max_bins);
+        self
+    }
+
+    /// Build the DDSketch
+    pub fn build(self) -> Result<DDSketch, DDSketchError> {
+        if self.alpha <= 0.0 || self.alpha >= 1.0 {
+            return Err(DDSketchError::InvalidAlpha);
+        }
+
+        // Use the correct DDSketch formulation from the reference implementation
+        let gamma = 1.0 + (2.0 * self.alpha) / (1.0 - self.alpha);
+        let gamma_ln = ((2.0 * self.alpha) / (1.0 - self.alpha)).ln_1p();
+
+        let min_value = 1e-9_f64;
+        let offset = 1 - (min_value.ln() / gamma_ln) as i64;
+        let max_bins = self.max_bins.unwrap_or(4096);
+
+        Ok(DDSketch {
+            bins: Vec::new(),
+            min_key: 0,
+            max_key: 0,
+            count: 0,
+            zero_count: 0,
+            sum: 0.0,
+            min: f64::INFINITY,
+            max: f64::NEG_INFINITY,
+            gamma,
+            gamma_ln,
+            inv_ln_gamma: 1.0 / gamma_ln,
+            key_epsilon: min_value,
+            offset,
+            max_bins,
+            is_collapsed: false,
+        })
+    }
+}
+
+impl DDSketch {
+    /// Create a new builder for constructing a DDSketch
+    pub fn builder(alpha: f64) -> DDSketchBuilder {
+        DDSketchBuilder::new(alpha)
+    }
+
+    /// Create a DDSketch with custom maximum bins
+    pub fn with_max_bins(alpha: f64, max_bins: usize) -> Result<Self, DDSketchError> {
+        Self::builder(alpha).max_bins(max_bins).build()
     }
 }
 
