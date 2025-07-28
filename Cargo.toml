@@ -31,7 +31,7 @@ path = "bin/quantile_operations.rs"
 rand = "0.9"
 
 [dev-dependencies]
-criterion = "0.6"
+criterion = "0.7"
 approx = "0.5"
 # existing Go-port implementation
 sketches-ddsketch = "0.3"
