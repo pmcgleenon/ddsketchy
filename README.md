@@ -37,11 +37,11 @@ fn main() -> Result<(), DDSketchError> {
 
     // Get the 50th percentile (median)
     let median = sketch.quantile(0.5)?;
-    println!("Median: {}", median);  // Will print approximately 3.0
+    println!("Median: {}", median);  
 
     // Get the 90th percentile
     let p90 = sketch.quantile(0.9)?;
-    println!("90th percentile: {}", p90);  // Will print approximately 4.6
+    println!("90th percentile: {}", p90); 
 
     Ok(())
 }
@@ -54,7 +54,6 @@ dd-sketchy is optimized for high-throughput scenarios:
 * Efficient sample insertion with minimal overhead
 * Fast sketch merging for distributed systems
 * Memory-efficient storage with automatic bin management
-* Thread-safe operations for concurrent usage
 
 ## References
 
