@@ -3,21 +3,13 @@
 # dd-sketchy
 
 This is a Rust implementation of the [DDSketch](https://arxiv.org/pdf/1908.10693.pdf) quantile sketch algorithm. 
-DDSketch is a fully-mergeable quantile sketch with relative-error guarantees and is extremely fast.
+DDSketch is a fully-mergeable quantile sketch with relative-error guarantees.
 
 # dd-sketchy Features
 
 * Implements the DDSketch algorithm with configurable relative error guarantees
 * Optimized for high-throughput data collection scenarios
 * Designed for distributed systems with efficient sketch merging
-
-## Implementation Details
-
-dd-sketchy is built with performance and reliability in mind:
-
-* Efficient logarithmic binning scheme
-* Automatic memory management with configurable thresholds
-* Configurable error bounds for different use cases
 
 ## Usage
 
@@ -46,14 +38,6 @@ fn main() -> Result<(), DDSketchError> {
     Ok(())
 }
 ```
-
-## Performance
-
-dd-sketchy is optimized for high-throughput scenarios:
-
-* Efficient sample insertion with minimal overhead
-* Fast sketch merging for distributed systems
-* Memory-efficient storage with automatic bin management
 
 ## References
 
