@@ -1,5 +1,5 @@
 [package]
-name = "dd_sketchy"
+name = "dd-sketchy"
 version = "0.1.0"
 authors = ["Patrick McGleenon"]
 edition = "2021"
