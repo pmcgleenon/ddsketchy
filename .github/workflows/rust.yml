@@ -16,7 +16,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        rust: [stable, beta, 1.75.0]
+        rust: [stable, beta, 1.81.0]
         features: ["", "serde"]
     runs-on: ${{ matrix.os }}
 
@@ -86,10 +86,12 @@ jobs:
     - name: Build examples
       run: cargo build --examples --verbose
 
-    - name: Run serialization examples
+    - name: Run all examples
       run: |
+        cargo run --example readme_example
         cargo run --example compare_serialization --features serde
         cargo run --example readme_serde_example --features serde
+        cargo run --example debug_serde --features serde
 
   # Security audit
   security:

@@ -76,7 +76,7 @@ The serialization handles all internal state including infinity values for min/m
 
 ## Minimum Supported Rust Version (MSRV)
 
-This crate supports Rust 1.75.0 and later. We follow a rolling MSRV policy of approximately 1 year behind the latest stable release. MSRV increases may occur in minor releases and will be noted in the changelog.
+This crate supports Rust 1.81.0 and later. We follow a rolling MSRV policy of approximately 1 year behind the latest stable release. MSRV increases may occur in minor releases and will be noted in the changelog.
 
 ## References
 

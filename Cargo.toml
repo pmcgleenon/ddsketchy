@@ -3,7 +3,7 @@ name = "dd_sketchy"
 version = "0.1.0"
 authors = ["Patrick McGleenon"]
 edition = "2021"
-rust-version = "1.75.0"
+rust-version = "1.81.0"
 description = "DD Sketch in Rust"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/pmcgleenon/ddsketchy"
@@ -15,6 +15,21 @@ harness = false
 [[bench]]
 name = "ddsketch_bench"
 harness = false
+
+[[example]]
+name = "readme_example"
+
+[[example]]
+name = "compare_serialization"
+required-features = ["serde"]
+
+[[example]]
+name = "readme_serde_example"
+required-features = ["serde"]
+
+[[example]]
+name = "debug_serde"
+required-features = ["serde"]
 
 [dependencies]
 # Optional serialization support
