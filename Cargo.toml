@@ -3,6 +3,7 @@ name = "dd_sketchy"
 version = "0.1.0"
 authors = ["Patrick McGleenon"]
 edition = "2021"
+rust-version = "1.70.0"
 description = "DD Sketch in Rust"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/pmcgleenon/ddsketchy"

@@ -8,4 +8,4 @@ mod dd_sketchy_test;
 #[cfg(test)]
 mod serde_tests;
 
-pub use dd_sketchy::{DDSketch, DDSketchError, DDSketchBuilder};
+pub use dd_sketchy::{DDSketch, DDSketchBuilder, DDSketchError};

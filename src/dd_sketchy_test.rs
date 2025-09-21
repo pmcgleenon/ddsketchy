@@ -1,6 +1,6 @@
 use crate::dd_sketchy::{DDSketch, DDSketchError};
 use approx::assert_relative_eq;
-use rand_distr::{Distribution, Normal, Exp};
+use rand_distr::{Distribution, Exp, Normal};
 
 const RELATIVE_ERROR: f64 = 0.01;
 
@@ -76,10 +76,17 @@ impl Dataset {
 }
 
 // Validation functions from Go implementation
-fn assert_relatively_accurate(relative_accuracy: f64, expected_lower_bound: f64, expected_upper_bound: f64, actual: f64) {
-    let min_expected_value = (expected_lower_bound * (1.0 - relative_accuracy)).min(expected_lower_bound * (1.0 + relative_accuracy));
-    let max_expected_value = (expected_upper_bound * (1.0 - relative_accuracy)).max(expected_upper_bound * (1.0 + relative_accuracy));
-    
+fn assert_relatively_accurate(
+    relative_accuracy: f64,
+    expected_lower_bound: f64,
+    expected_upper_bound: f64,
+    actual: f64,
+) {
+    let min_expected_value = (expected_lower_bound * (1.0 - relative_accuracy))
+        .min(expected_lower_bound * (1.0 + relative_accuracy));
+    let max_expected_value = (expected_upper_bound * (1.0 - relative_accuracy))
+        .max(expected_upper_bound * (1.0 + relative_accuracy));
+
     assert!(
         min_expected_value - FLOATING_POINT_ACCEPTABLE_ERROR <= actual,
         "Value {} below minimum expected {}",
@@ -97,7 +104,7 @@ fn assert_relatively_accurate(relative_accuracy: f64, expected_lower_bound: f64,
 fn assert_sketches_accurate(sketch: &DDSketch, dataset: &mut Dataset) {
     let alpha = 0.01; // RELATIVE_ERROR
     assert_eq!(dataset.count(), sketch.count());
-    
+
     if dataset.count() == 0 {
         // Empty sketch behavior - should return 0.0 for quantiles
         let quantile = sketch.quantile(0.5).unwrap();
@@ -105,17 +112,29 @@ fn assert_sketches_accurate(sketch: &DDSketch, dataset: &mut Dataset) {
     } else {
         let min_value = sketch.min();
         let max_value = sketch.max();
-        
+
         // For exact summary statistics, we expect exact values
-        assert_relative_eq!(dataset.min(), min_value, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
-        assert_relative_eq!(dataset.max(), max_value, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
-        assert_relative_eq!(dataset.sum(), sketch.sum(), max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
-        
+        assert_relative_eq!(
+            dataset.min(),
+            min_value,
+            max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+        );
+        assert_relative_eq!(
+            dataset.max(),
+            max_value,
+            max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+        );
+        assert_relative_eq!(
+            dataset.sum(),
+            sketch.sum(),
+            max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+        );
+
         for &q in &TEST_QUANTILES {
             let lower_quantile = dataset.lower_quantile(q);
             let upper_quantile = dataset.upper_quantile(q);
             let quantile = sketch.quantile(q).unwrap();
-            
+
             assert_relatively_accurate(alpha, lower_quantile, upper_quantile, quantile);
             // DDSketch approximations may fall slightly outside observed min/max due to algorithm design
             // For constant values, allow tolerance based on the DDSketch error bound
@@ -125,23 +144,38 @@ fn assert_sketches_accurate(sketch: &DDSketch, dataset: &mut Dataset) {
             } else {
                 (max_value - min_value) * alpha + 1e-10
             };
-            assert!(quantile >= min_value - tolerance,
-                "Quantile {} below min {} with tolerance {}", quantile, min_value, tolerance);
-            assert!(quantile <= max_value + tolerance,
-                "Quantile {} above max {} with tolerance {}", quantile, max_value, tolerance);
+            assert!(
+                quantile >= min_value - tolerance,
+                "Quantile {} below min {} with tolerance {}",
+                quantile,
+                min_value,
+                tolerance
+            );
+            assert!(
+                quantile <= max_value + tolerance,
+                "Quantile {} above max {} with tolerance {}",
+                quantile,
+                max_value,
+                tolerance
+            );
         }
     }
 }
 
 // Test evaluation framework
-fn evaluate_sketch(n: usize, generator: &mut dyn FnMut() -> f64, sketch: &mut DDSketch, dataset: &mut Dataset) {
+fn evaluate_sketch(
+    n: usize,
+    generator: &mut dyn FnMut() -> f64,
+    sketch: &mut DDSketch,
+    dataset: &mut Dataset,
+) {
     for _ in 0..n {
         let value = generator();
         sketch.add(value);
         dataset.add(value);
     }
     assert_sketches_accurate(sketch, dataset);
-    
+
     // Add negative numbers
     for _ in 0..n {
         let value = generator();
@@ -159,7 +193,11 @@ fn test_add_zero() {
     assert_eq!(dd.sum(), 0.0);
     // For zero values, DDSketch should return exact zero due to special zero handling
     let quantile = dd.quantile(0.5).unwrap();
-    assert_eq!(quantile, 0.0, "Expected exactly 0.0 for zero values, got {}", quantile);
+    assert_eq!(
+        quantile, 0.0,
+        "Expected exactly 0.0 for zero values, got {}",
+        quantile
+    );
 }
 
 #[test]
@@ -173,10 +211,22 @@ fn test_empty_sketch() {
 
 #[test]
 fn test_invalid_alpha() {
-    assert!(matches!(DDSketch::new(0.0), Err(DDSketchError::InvalidAlpha)));
-    assert!(matches!(DDSketch::new(1.0), Err(DDSketchError::InvalidAlpha)));
-    assert!(matches!(DDSketch::new(-1.0), Err(DDSketchError::InvalidAlpha)));
-    assert!(matches!(DDSketch::new(2.0), Err(DDSketchError::InvalidAlpha)));
+    assert!(matches!(
+        DDSketch::new(0.0),
+        Err(DDSketchError::InvalidAlpha)
+    ));
+    assert!(matches!(
+        DDSketch::new(1.0),
+        Err(DDSketchError::InvalidAlpha)
+    ));
+    assert!(matches!(
+        DDSketch::new(-1.0),
+        Err(DDSketchError::InvalidAlpha)
+    ));
+    assert!(matches!(
+        DDSketch::new(2.0),
+        Err(DDSketchError::InvalidAlpha)
+    ));
 }
 
 #[test]
@@ -187,7 +237,7 @@ fn test_basic_histogram_data() {
     // }
     // assert_eq!(dd.count(), TEST_VALUES.len() as u64);
     // assert_relative_eq!(dd.sum(), TEST_VALUES.iter().sum(), max_relative = RELATIVE_ERROR);
-    
+
     // // Test various quantiles
     // assert!(dd.quantile(0.25).is_ok());
     // assert!(dd.quantile(0.5).is_ok());
@@ -230,7 +280,7 @@ fn test_linear_distribution() {
 
     // for &(q, expected) in &test_cases {
     //     let actual = dd.quantile(q).unwrap();
-        
+
     //     // For min/max, expect exact values
     //     if q == 0.0 || q == 1.0 {
     //         assert_relative_eq!(actual, expected, max_relative = RELATIVE_ERROR);
@@ -256,13 +306,13 @@ fn test_normal_distribution() {
     // let mut rng = StdRng::seed_from_u64(42);
     // let mean = 100.0;
     // let std_dev = 10.0;
-    
+
     // // Generate normal distribution
     // for _ in 0..1000 {
     //     let v = rng.gen::<f64>() * std_dev + mean;
     //     dd.add(v);
     // }
-    
+
     // // The median should be close to the mean
     // assert_relative_eq!(dd.quantile(0.5).unwrap(), mean, max_relative = 0.1);
 }
@@ -330,12 +380,12 @@ fn test_simple_quantile() {
 #[test]
 fn test_extreme_values() {
     // let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
-    
+
     // // Add some extreme values
     // dd.add(1e-100);
     // dd.add(1e100);
     // dd.add(0.0);
-    
+
     // assert_relative_eq!(dd.quantile(0.0).unwrap(), 1e-100, max_relative = RELATIVE_ERROR);
     // assert_relative_eq!(dd.quantile(1.0).unwrap(), 1e100, max_relative = RELATIVE_ERROR);
 }
@@ -343,13 +393,13 @@ fn test_extreme_values() {
 #[test]
 fn test_mixed_distribution() {
     // let mut dd = DDSketch::new(RELATIVE_ERROR).unwrap();
-    
+
     // // Mix of positive, negative, and zero values
     // let values = vec![-10.0, -1.0, 0.0, 0.0, 1.0, 10.0];
     // for &v in &values {
     //     dd.add(v);
     // }
-    
+
     // assert_relative_eq!(dd.quantile(0.0).unwrap(), -10.0, max_relative = RELATIVE_ERROR);
     // assert_relative_eq!(dd.quantile(0.5).unwrap(), 0.0, max_relative = RELATIVE_ERROR);
     // assert_relative_eq!(dd.quantile(1.0).unwrap(), 10.0, max_relative = RELATIVE_ERROR);
@@ -375,7 +425,7 @@ fn test_merge_operations() {
     // assert_relative_eq!(d1.sum(), 5.0, max_relative = RELATIVE_ERROR);
     // assert_relative_eq!(d1.quantile(0.0).unwrap(), 1.0, max_relative = RELATIVE_ERROR);
     // assert_relative_eq!(d1.quantile(1.0).unwrap(), 2.0, max_relative = RELATIVE_ERROR);
-    
+
     // // For the median, we expect it to be 2.0 since we have {1.0, 2.0, 2.0}
     // let median = d1.quantile(0.5).unwrap();
     // assert!(
@@ -437,7 +487,7 @@ fn test_quantile_error_bounds() {
     // d.add(1.0);
 
     // let q = d.quantile(0.50).unwrap();
-    
+
     // // Their implementation uses a different quantile calculation
     // // that results in exact values for constant inputs
     // assert_eq!(q, 1.0);
@@ -448,14 +498,14 @@ fn test_original_example() {
     // Test the original example from the Go program
     let mut sketch = DDSketch::new(0.01).unwrap();
     let values = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-    
+
     for &v in &values {
         sketch.add(v);
     }
-    
+
     let median = sketch.quantile(0.5).unwrap();
     let p90 = sketch.quantile(0.9).unwrap();
-    
+
     // Expected values from Go implementation
     assert_relative_eq!(median, 2.9742334235, max_relative = 1e-10);
     assert_relative_eq!(p90, 4.0148353330, max_relative = 1e-10);
@@ -519,11 +569,11 @@ fn test_detailed_quartiles() -> Result<(), DDSketchError> {
 #[test]
 fn test_invalid_quantile() -> Result<(), DDSketchError> {
     let sketch = DDSketch::new(0.01)?;
-    
+
     // Test quantile values outside valid range
     assert!(sketch.quantile(-0.1).is_err());
     assert!(sketch.quantile(1.1).is_err());
-    
+
     Ok(())
 }
 
@@ -579,7 +629,9 @@ fn assert_within_relative_error(approx: f64, exact: f64, alpha: f64) {
         assert!(
             rel_err <= alpha * 2.0, // Allow more tolerance for complex merges
             "Expected ~{}, got {}, rel_err={}",
-            exact, approx, rel_err
+            exact,
+            approx,
+            rel_err
         );
     } else {
         assert!(approx.abs() <= alpha);
@@ -672,8 +724,16 @@ fn test_go_reference_validation() {
     println!("90th percentile: 4.0148353330");
 
     // Test with tolerance for floating point comparison
-    assert!((median - 2.9742334235).abs() < 1e-9, "Median mismatch: got {}, expected 2.9742334235", median);
-    assert!((p90 - 4.0148353330).abs() < 1e-9, "P90 mismatch: got {}, expected 4.0148353330", p90);
+    assert!(
+        (median - 2.9742334235).abs() < 1e-9,
+        "Median mismatch: got {}, expected 2.9742334235",
+        median
+    );
+    assert!(
+        (p90 - 4.0148353330).abs() < 1e-9,
+        "P90 mismatch: got {}, expected 4.0148353330",
+        p90
+    );
 
     // Test single values from Go reference
     let test_cases = vec![
@@ -689,13 +749,23 @@ fn test_go_reference_validation() {
         test_sketch.add(input);
         let actual = test_sketch.quantile(0.5).unwrap();
 
-        println!("Value {:.1} -> our: {:.10}, go: {:.10}", input, actual, expected);
+        println!(
+            "Value {:.1} -> our: {:.10}, go: {:.10}",
+            input, actual, expected
+        );
 
         let relative_error = (actual - expected).abs() / expected.abs();
         println!("  relative error: {:.2e}", relative_error);
 
         // DDSketch algorithm inherently has ~1% error for alpha=0.01, so allow reasonable tolerance
-        assert!(relative_error < 0.02, "Value {} error too large: got {}, expected {}, rel_err: {:.2e}", input, actual, expected, relative_error);
+        assert!(
+            relative_error < 0.02,
+            "Value {} error too large: got {}, expected {}, rel_err: {:.2e}",
+            input,
+            actual,
+            expected,
+            relative_error
+        );
     }
 }
 
@@ -705,10 +775,10 @@ fn test_no_panic_on_large_ranges() {
     let mut sketch = DDSketch::new(0.01).unwrap();
 
     // Add values with extremely wide range to trigger bin collapsing
-    sketch.add(1e-10);  // Very small
-    sketch.add(1e10);   // Very large
-    sketch.add(1e-9);   // Another small
-    sketch.add(1e9);    // Another large
+    sketch.add(1e-10); // Very small
+    sketch.add(1e10); // Very large
+    sketch.add(1e-9); // Another small
+    sketch.add(1e9); // Another large
 
     // Verify sketch still works after collapsing
     assert!(sketch.count() > 0);
@@ -747,7 +817,11 @@ fn test_collapsing_lowest_behavior() {
 
     // The sketch should preserve higher values better than lower ones when collapsed
     let high_percentile = sketch.quantile(0.9).unwrap();
-    assert!(high_percentile > 1000.0, "High percentile should be preserved: {}", high_percentile);
+    assert!(
+        high_percentile > 1000.0,
+        "High percentile should be preserved: {}",
+        high_percentile
+    );
 }
 
 #[test]
@@ -818,9 +892,14 @@ fn test_collapsing_quantile_accuracy() {
 
         // Allow higher error tolerance for collapsed sketches
         let relative_error = (actual - expected).abs() / expected.abs();
-        assert!(relative_error < 0.2,
+        assert!(
+            relative_error < 0.2,
             "Quantile {} error too high: got {}, expected {}, rel_err: {:.3}",
-            q, actual, expected, relative_error);
+            q,
+            actual,
+            expected,
+            relative_error
+        );
     }
 }
 
@@ -843,8 +922,18 @@ fn test_empty_and_single_value_with_collapsing() {
     let q100 = sketch.quantile(1.0).unwrap();
 
     // Allow small approximation error due to DDSketch binning
-    assert!((q0 - q50).abs() < 1.0, "Q0 and Q50 should be close: {} vs {}", q0, q50);
-    assert!((q50 - q100).abs() < 1.0, "Q50 and Q100 should be close: {} vs {}", q50, q100);
+    assert!(
+        (q0 - q50).abs() < 1.0,
+        "Q0 and Q50 should be close: {} vs {}",
+        q0,
+        q50
+    );
+    assert!(
+        (q50 - q100).abs() < 1.0,
+        "Q50 and Q100 should be close: {} vs {}",
+        q50,
+        q100
+    );
 
     // Add extreme value to trigger collapsing
     sketch.add(1e12);
@@ -940,4 +1029,3 @@ fn test_error_trait_implementation() {
     assert_eq!(error, error2);
     println!("Error debug: {:?}", error);
 }
-
