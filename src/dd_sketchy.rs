@@ -119,7 +119,7 @@ pub struct DDSketch {
 impl DDSketch {
     /// Create a new DDSketch with relative error `alpha` (0 < alpha < 1)
     pub fn new(alpha: f64) -> Result<Self, DDSketchError> {
-        if alpha <= 0.0 || alpha >= 1.0 {
+        if !alpha.is_finite() || alpha <= 0.0 || alpha >= 1.0 {
             return Err(DDSketchError::InvalidAlpha);
         }
 
@@ -128,7 +128,7 @@ impl DDSketch {
         let gamma_ln = ((2.0 * alpha) / (1.0 - alpha)).ln_1p();
 
         let min_value = 1e-9_f64;
-        let offset = 1 - (min_value.ln() / gamma_ln) as i64;
+        let offset = 0i64; // DataDog uses indexOffset = 0 by default
 
         let max_bins = 4096;
 
@@ -159,13 +159,21 @@ impl DDSketch {
             return 0;
         }
 
-        // Use multiplication instead of division for better performance
-        let log_gamma = abs_val.ln() * self.inv_ln_gamma;
-        let abs_key = log_gamma.ceil() as i64;
+        // Calculate key using the same formula as add method
+        let log_gamma = abs_val.ln() * self.inv_ln_gamma + self.offset as f64;
+        let abs_key = if log_gamma >= 0.0 {
+            log_gamma as i64
+        } else {
+            log_gamma as i64 - 1 // Equivalent to floor for negative values
+        };
 
         // Handle negative values by using negative keys
         if value < 0.0 {
-            -abs_key
+            if abs_key == 0 {
+                -1 // Ensure negative values never map to key 0
+            } else {
+                -abs_key
+            }
         } else {
             abs_key
         }
@@ -193,7 +201,13 @@ impl DDSketch {
         let new_min_key = new_min_key.min(self.min_key);
         let new_max_key = new_max_key.max(self.max_key);
 
-        let required_size = (new_max_key - new_min_key + 1) as usize;
+        let range_size = new_max_key.saturating_sub(new_min_key).saturating_add(1);
+        if !(0..=i64::MAX / 2).contains(&range_size) {
+            // Range too large, force collapsing
+            self.adjust(new_min_key, new_max_key);
+            return;
+        }
+        let required_size = range_size as usize;
         if required_size <= self.max_bins {
             // No collapsing needed, just grow the bins
             if new_min_key < self.min_key {
@@ -217,7 +231,8 @@ impl DDSketch {
     /// Adjust bins to fit within max_bins, collapsing lowest bins if necessary
     /// Based on Go reference CollapsingLowestDenseStore.adjust()
     fn adjust(&mut self, new_min_key: i64, new_max_key: i64) {
-        if new_max_key - new_min_key + 1 > self.max_bins as i64 {
+        let range_size = new_max_key.saturating_sub(new_min_key).saturating_add(1);
+        if range_size > self.max_bins as i64 {
             // Need to collapse - keep highest keys (newest values)
             let adjusted_min_key = new_max_key - (self.max_bins as i64) + 1;
 
@@ -271,7 +286,8 @@ impl DDSketch {
 
     /// Center the bins in the array for the new range
     fn center_bins(&mut self, new_min_key: i64, new_max_key: i64) {
-        let required_size = (new_max_key - new_min_key + 1) as usize;
+        let range_size = new_max_key.saturating_sub(new_min_key).saturating_add(1);
+        let required_size = range_size.min(self.max_bins as i64) as usize;
         let mut new_bins = vec![0; required_size];
 
         // Copy existing bins to new array
@@ -291,24 +307,44 @@ impl DDSketch {
     /// Add a value to the sketch
     #[inline]
     pub fn add(&mut self, value: f64) {
-        // Fast path for common case: assume finite values
-        // Only check finite for edge cases
+        // Skip infinite/NaN values immediately
+        if !value.is_finite() {
+            return;
+        }
+
         let abs_val = value.abs();
 
         if abs_val <= self.key_epsilon {
-            if !value.is_finite() {
-                return; // Skip infinite/NaN values
-            }
             self.zero_count += 1;
         } else {
-            // For non-zero values, assume finite (common case)
-            // Calculate key using pre-computed abs_val
-            let log_gamma = abs_val.ln() * self.inv_ln_gamma;
-            let abs_key = log_gamma.ceil() as i64;
-            let key = if value < 0.0 { -abs_key } else { abs_key };
+            // For non-zero finite values
+            // Calculate key using pre-computed abs_val and offset
+            let log_gamma = abs_val.ln() * self.inv_ln_gamma + self.offset as f64;
+            let abs_key = if log_gamma >= 0.0 {
+                log_gamma as i64
+            } else {
+                log_gamma as i64 - 1 // Equivalent to floor for negative values
+            };
+            let key = if value < 0.0 {
+                if abs_key == 0 {
+                    -1 // Ensure negative values never map to key 0
+                } else {
+                    -abs_key
+                }
+            } else {
+                abs_key
+            };
 
             self.ensure_capacity(key);
-            let idx = (key - self.min_key) as usize;
+
+            // Safely calculate index with bounds checking
+            let key_offset = key - self.min_key;
+            if key_offset < 0 || key_offset >= self.bins.len() as i64 {
+                // Value outside current bin range after collapsing - this can happen
+                // with extreme values when collapsing is active
+                return;
+            }
+            let idx = key_offset as usize;
             self.bins[idx] += 1;
         }
 
@@ -421,6 +457,32 @@ impl DDSketch {
         }
     }
 
+    // Debug methods for testing
+    #[cfg(test)]
+    pub fn zero_count(&self) -> u64 {
+        self.zero_count
+    }
+    #[cfg(test)]
+    pub fn min_key(&self) -> i64 {
+        self.min_key
+    }
+    #[cfg(test)]
+    pub fn max_key(&self) -> i64 {
+        self.max_key
+    }
+    #[cfg(test)]
+    pub fn bins(&self) -> &[u64] {
+        &self.bins
+    }
+    #[cfg(test)]
+    pub fn debug_key_to_value(&self, key: i64) -> f64 {
+        self.key_to_value(key)
+    }
+    #[cfg(test)]
+    pub fn key_epsilon(&self) -> f64 {
+        self.key_epsilon
+    }
+
     /// Returns the minimum value added to the sketch
     /// Returns f64::INFINITY if the sketch is empty
     #[inline]
@@ -465,11 +527,16 @@ impl DDSketch {
     ///
     /// Returns 0.0 if the sketch is empty for backward compatibility.
     pub fn quantile(&self, q: f64) -> Result<f64, DDSketchError> {
-        if !(0.0..=1.0).contains(&q) {
+        if !q.is_finite() || !(0.0..=1.0).contains(&q) {
             return Err(DDSketchError::InvalidQuantile);
         }
         if self.count == 0 {
             return Ok(0.0);
+        }
+
+        // Special case: single value - all quantiles return that value
+        if self.count == 1 {
+            return Ok(self.min); // min == max for single value
         }
 
         if q == 0.0 {
@@ -480,18 +547,46 @@ impl DDSketch {
 
         let rank = (q * (self.count as f64 - 1.0)) as u64;
 
-        // Check if rank falls within zero counts
-        if rank < self.zero_count {
+        let mut sum = 0u64;
+
+        // Process negative values first (in descending order)
+        if self.min_key < 0 {
+            for key in (self.min_key..0).rev() {
+                let bin_idx = (key - self.min_key) as usize;
+                if bin_idx < self.bins.len() {
+                    let count = self.bins[bin_idx];
+                    if count > 0 {
+                        sum += count;
+                        if sum > rank {
+                            let reconstructed_value = self.key_to_value(key);
+                            return Ok(reconstructed_value.min(self.max).max(self.min));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process zeros
+        sum += self.zero_count;
+        if sum > rank {
             return Ok(0.0);
         }
-        let mut sum = self.zero_count;
 
-        // Check positive values
-        for (i, &c) in self.bins.iter().enumerate() {
-            sum += c;
-            if sum > rank {
-                let key = self.min_key + i as i64;
-                return Ok(self.key_to_value(key));
+        // Process positive values (in ascending order)
+        if self.max_key >= 0 {
+            let start_key = if self.min_key <= 0 { 0 } else { self.min_key };
+            for key in start_key..=self.max_key {
+                let bin_idx = (key - self.min_key) as usize;
+                if bin_idx < self.bins.len() {
+                    let count = self.bins[bin_idx];
+                    if count > 0 {
+                        sum += count;
+                        if sum > rank {
+                            let reconstructed_value = self.key_to_value(key);
+                            return Ok(reconstructed_value.min(self.max).max(self.min));
+                        }
+                    }
+                }
             }
         }
 
@@ -500,7 +595,7 @@ impl DDSketch {
 
     /// Returns the value at the given quantile, with Option for empty handling
     pub fn quantile_opt(&self, q: f64) -> Result<Option<f64>, DDSketchError> {
-        if !(0.0..=1.0).contains(&q) {
+        if !q.is_finite() || !(0.0..=1.0).contains(&q) {
             return Err(DDSketchError::InvalidQuantile);
         }
         if self.count == 0 {
@@ -538,24 +633,33 @@ impl DDSketch {
         let mut batch_max = f64::NEG_INFINITY;
 
         for value in values {
+            // Skip infinite/NaN values immediately
+            if !value.is_finite() {
+                continue;
+            }
+
             let abs_val = value.abs();
 
             if abs_val <= self.key_epsilon {
-                if value.is_finite() {
-                    self.zero_count += 1;
-                    batch_count += 1;
-                    batch_sum += value;
-                    batch_min = batch_min.min(value);
-                    batch_max = batch_max.max(value);
-                }
+                self.zero_count += 1;
+                batch_count += 1;
+                batch_sum += value;
+                batch_min = batch_min.min(value);
+                batch_max = batch_max.max(value);
             } else {
-                // Assume finite for non-zero values (common case)
                 let log_gamma = abs_val.ln() * self.inv_ln_gamma;
                 let abs_key = log_gamma.ceil() as i64;
                 let key = if value < 0.0 { -abs_key } else { abs_key };
 
                 self.ensure_capacity(key);
-                let idx = (key - self.min_key) as usize;
+
+                // Safely calculate index with bounds checking
+                let key_offset = key - self.min_key;
+                if key_offset < 0 || key_offset >= self.bins.len() as i64 {
+                    // Value outside current bin range after collapsing
+                    continue;
+                }
+                let idx = key_offset as usize;
                 self.bins[idx] += 1;
 
                 batch_count += 1;
@@ -575,7 +679,15 @@ impl DDSketch {
     #[inline]
     fn key_to_value(&self, key: i64) -> f64 {
         let abs_key = key.abs() as f64;
-        let abs_value = (abs_key * self.gamma_ln).exp() * (2.0 / (1.0 + self.gamma));
+
+        // Calculate the lower bound of the bin using offset
+        // This matches DataDog's LowerBound(index) = exp((index - indexOffset) / multiplier)
+        let lower_bound = ((abs_key - self.offset as f64) * self.gamma_ln).exp();
+
+        // Return the representative value: lower_bound * (1 + alpha)
+        // This matches DataDog's Value(index) = LowerBound(index) * (1 + RelativeAccuracy())
+        let alpha = (self.gamma - 1.0) / (self.gamma + 1.0);
+        let abs_value = lower_bound * (1.0 + alpha);
 
         // Return negative value for negative keys
         if key < 0 {
@@ -652,7 +764,7 @@ impl DDSketchBuilder {
 
     /// Build the DDSketch
     pub fn build(self) -> Result<DDSketch, DDSketchError> {
-        if self.alpha <= 0.0 || self.alpha >= 1.0 {
+        if !self.alpha.is_finite() || self.alpha <= 0.0 || self.alpha >= 1.0 {
             return Err(DDSketchError::InvalidAlpha);
         }
 
@@ -661,7 +773,7 @@ impl DDSketchBuilder {
         let gamma_ln = ((2.0 * self.alpha) / (1.0 - self.alpha)).ln_1p();
 
         let min_value = 1e-9_f64;
-        let offset = 1 - (min_value.ln() / gamma_ln) as i64;
+        let offset = 0i64; // DataDog uses indexOffset = 0 by default
         let max_bins = self.max_bins.unwrap_or(4096);
 
         Ok(DDSketch {

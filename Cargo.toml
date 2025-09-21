@@ -6,7 +6,10 @@ edition = "2021"
 rust-version = "1.81.0"
 description = "DD Sketch in Rust"
 license = "Apache-2.0 OR MIT"
+categories = ["data-structures", "algorithms"]
+exclude = [".github"]
 repository = "https://github.com/pmcgleenon/ddsketchy"
+keywords = ["ddsketch", "sketch", "data-structure"]
 
 [[bench]]
 name = "dd_sketchy_bench"
@@ -27,9 +30,6 @@ required-features = ["serde"]
 name = "readme_serde_example"
 required-features = ["serde"]
 
-[[example]]
-name = "debug_serde"
-required-features = ["serde"]
 
 [dependencies]
 # Optional serialization support
