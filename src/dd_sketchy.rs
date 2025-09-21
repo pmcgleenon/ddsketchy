@@ -119,7 +119,7 @@ pub struct DDSketch {
 impl DDSketch {
     /// Create a new DDSketch with relative error `alpha` (0 < alpha < 1)
     pub fn new(alpha: f64) -> Result<Self, DDSketchError> {
-        if alpha <= 0.0 || alpha >= 1.0 {
+        if !alpha.is_finite() || alpha <= 0.0 || alpha >= 1.0 {
             return Err(DDSketchError::InvalidAlpha);
         }
 
@@ -159,13 +159,21 @@ impl DDSketch {
             return 0;
         }
 
-        // Use multiplication instead of division for better performance
-        let log_gamma = abs_val.ln() * self.inv_ln_gamma;
-        let abs_key = log_gamma.ceil() as i64;
+        // Calculate key using the same formula as add method
+        let log_gamma = abs_val.ln() * self.inv_ln_gamma + self.offset as f64;
+        let abs_key = if log_gamma >= 0.0 {
+            log_gamma as i64
+        } else {
+            log_gamma as i64 - 1  // Equivalent to floor for negative values
+        };
 
         // Handle negative values by using negative keys
         if value < 0.0 {
-            -abs_key
+            if abs_key == 0 {
+                -1  // Ensure negative values never map to key 0
+            } else {
+                -abs_key
+            }
         } else {
             abs_key
         }
@@ -460,6 +468,8 @@ impl DDSketch {
     pub fn bins(&self) -> &[u64] { &self.bins }
     #[cfg(test)]
     pub fn debug_key_to_value(&self, key: i64) -> f64 { self.key_to_value(key) }
+    #[cfg(test)]
+    pub fn key_epsilon(&self) -> f64 { self.key_epsilon }
 
     /// Returns the minimum value added to the sketch
     /// Returns f64::INFINITY if the sketch is empty
@@ -505,7 +515,7 @@ impl DDSketch {
     ///
     /// Returns 0.0 if the sketch is empty for backward compatibility.
     pub fn quantile(&self, q: f64) -> Result<f64, DDSketchError> {
-        if !(0.0..=1.0).contains(&q) {
+        if !q.is_finite() || !(0.0..=1.0).contains(&q) {
             return Err(DDSketchError::InvalidQuantile);
         }
         if self.count == 0 {
@@ -573,7 +583,7 @@ impl DDSketch {
 
     /// Returns the value at the given quantile, with Option for empty handling
     pub fn quantile_opt(&self, q: f64) -> Result<Option<f64>, DDSketchError> {
-        if !(0.0..=1.0).contains(&q) {
+        if !q.is_finite() || !(0.0..=1.0).contains(&q) {
             return Err(DDSketchError::InvalidQuantile);
         }
         if self.count == 0 {
@@ -611,24 +621,33 @@ impl DDSketch {
         let mut batch_max = f64::NEG_INFINITY;
 
         for value in values {
+            // Skip infinite/NaN values immediately
+            if !value.is_finite() {
+                continue;
+            }
+
             let abs_val = value.abs();
 
             if abs_val <= self.key_epsilon {
-                if value.is_finite() {
-                    self.zero_count += 1;
-                    batch_count += 1;
-                    batch_sum += value;
-                    batch_min = batch_min.min(value);
-                    batch_max = batch_max.max(value);
-                }
+                self.zero_count += 1;
+                batch_count += 1;
+                batch_sum += value;
+                batch_min = batch_min.min(value);
+                batch_max = batch_max.max(value);
             } else {
-                // Assume finite for non-zero values (common case)
                 let log_gamma = abs_val.ln() * self.inv_ln_gamma;
                 let abs_key = log_gamma.ceil() as i64;
                 let key = if value < 0.0 { -abs_key } else { abs_key };
 
                 self.ensure_capacity(key);
-                let idx = (key - self.min_key) as usize;
+
+                // Safely calculate index with bounds checking
+                let key_offset = key - self.min_key;
+                if key_offset < 0 || key_offset >= self.bins.len() as i64 {
+                    // Value outside current bin range after collapsing
+                    continue;
+                }
+                let idx = key_offset as usize;
                 self.bins[idx] += 1;
 
                 batch_count += 1;
@@ -733,7 +752,7 @@ impl DDSketchBuilder {
 
     /// Build the DDSketch
     pub fn build(self) -> Result<DDSketch, DDSketchError> {
-        if self.alpha <= 0.0 || self.alpha >= 1.0 {
+        if !self.alpha.is_finite() || self.alpha <= 0.0 || self.alpha >= 1.0 {
             return Err(DDSketchError::InvalidAlpha);
         }
 
