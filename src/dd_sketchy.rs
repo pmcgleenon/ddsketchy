@@ -19,7 +19,9 @@ impl std::fmt::Display for DDSketchError {
         match self {
             DDSketchError::InvalidAlpha => write!(f, "Alpha must be in range (0, 1)"),
             DDSketchError::InvalidQuantile => write!(f, "Quantile must be in range [0, 1]"),
-            DDSketchError::AlphaMismatch => write!(f, "Cannot merge sketches with different alpha values"),
+            DDSketchError::AlphaMismatch => {
+                write!(f, "Cannot merge sketches with different alpha values")
+            }
             DDSketchError::BinCountMismatch => write!(f, "Bin count exceeds maximum allowed"),
         }
     }
@@ -61,7 +63,6 @@ where
     Ok(opt.unwrap_or(f64::NEG_INFINITY))
 }
 
-
 /// A DDSketch quantile estimator with configurable relative accuracy.
 ///
 /// DDSketch provides fast quantile estimation with bounded relative error.
@@ -88,9 +89,21 @@ pub struct DDSketch {
 
     // Summary statistics
     sum: f64,
-    #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_f64_option", deserialize_with = "deserialize_min_f64"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "serialize_f64_option",
+            deserialize_with = "deserialize_min_f64"
+        )
+    )]
     min: f64,
-    #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_f64_option", deserialize_with = "deserialize_max_f64"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "serialize_f64_option",
+            deserialize_with = "deserialize_max_f64"
+        )
+    )]
     max: f64,
 
     // Configuration - accessed less frequently
@@ -102,7 +115,6 @@ pub struct DDSketch {
     max_bins: usize,
     is_collapsed: bool,
 }
-
 
 impl DDSketch {
     /// Create a new DDSketch with relative error `alpha` (0 < alpha < 1)
@@ -402,7 +414,11 @@ impl DDSketch {
     /// Returns 0.0 if the sketch is empty
     #[inline]
     pub fn mean(&self) -> f64 {
-        if self.count == 0 { 0.0 } else { self.sum / (self.count as f64) }
+        if self.count == 0 {
+            0.0
+        } else {
+            self.sum / (self.count as f64)
+        }
     }
 
     /// Returns the minimum value added to the sketch
@@ -514,7 +530,7 @@ impl DDSketch {
     #[inline]
     pub fn add_batch<I>(&mut self, values: I)
     where
-        I: IntoIterator<Item = f64>
+        I: IntoIterator<Item = f64>,
     {
         let mut batch_count = 0u64;
         let mut batch_sum = 0.0f64;
@@ -679,4 +695,3 @@ impl DDSketch {
         Self::builder(alpha).max_bins(max_bins).build()
     }
 }
-

@@ -7,16 +7,20 @@ fn bench_insert(c: &mut Criterion) {
     for &size in &[1_000, 10_000, 100_000] {
         // Pre-generate random numbers
         let mut rng = StdRng::seed_from_u64(42);
-        let values: Vec<f64> = (0..size).map(|_| rng.gen()).collect();
-        
-        group.bench_with_input(BenchmarkId::new("sketches-ddsketch", size), &size, |b, &_n| {
-            let mut sketch = DDSketch::new(Config::defaults());
-            b.iter(|| {
-                for &v in &values {
-                    sketch.add(v);
-                }
-            });
-        });
+        let values: Vec<f64> = (0..size).map(|_| rng.random()).collect();
+
+        group.bench_with_input(
+            BenchmarkId::new("sketches-ddsketch", size),
+            &size,
+            |b, &_n| {
+                let mut sketch = DDSketch::new(Config::defaults());
+                b.iter(|| {
+                    for &v in &values {
+                        sketch.add(v);
+                    }
+                });
+            },
+        );
     }
     group.finish();
 }
@@ -24,11 +28,11 @@ fn bench_insert(c: &mut Criterion) {
 fn bench_merge(c: &mut Criterion) {
     let mut group = c.benchmark_group("merge_throughput");
     let mut rng = StdRng::seed_from_u64(42);
-    
+
     // Pre-generate random numbers
-    let values1: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
-    let values2: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
-    
+    let values1: Vec<f64> = (0..100_000).map(|_| rng.random()).collect();
+    let values2: Vec<f64> = (0..100_000).map(|_| rng.random()).collect();
+
     // prepare two different sketches
     let sketch1 = {
         let mut s = DDSketch::new(Config::defaults());
@@ -45,19 +49,21 @@ fn bench_merge(c: &mut Criterion) {
         s
     };
 
-    group.bench_function("sketches-ddsketch", |b| b.iter(|| {
-        let mut s = sketch1.clone();
-        let _ = s.merge(&sketch2);
-    }));
+    group.bench_function("sketches-ddsketch", |b| {
+        b.iter(|| {
+            let mut s = sketch1.clone();
+            let _ = s.merge(&sketch2);
+        })
+    });
     group.finish();
 }
 
 fn bench_quantile(c: &mut Criterion) {
     let mut group = c.benchmark_group("quantile_throughput");
     let mut rng = StdRng::seed_from_u64(42);
-    
+
     // Pre-generate random numbers and create a sketch
-    let values: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
+    let values: Vec<f64> = (0..100_000).map(|_| rng.random()).collect();
     let sketch = {
         let mut s = DDSketch::new(Config::defaults());
         for &v in &values {
@@ -68,11 +74,15 @@ fn bench_quantile(c: &mut Criterion) {
 
     // Benchmark different quantile queries
     for &quantile in &[0.0, 0.25, 0.5, 0.75, 0.99, 1.0] {
-        group.bench_with_input(BenchmarkId::new("sketches-ddsketch", quantile), &quantile, |b, &q| {
-            b.iter(|| {
-                sketch.quantile(q).unwrap();
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::new("sketches-ddsketch", quantile),
+            &quantile,
+            |b, &q| {
+                b.iter(|| {
+                    sketch.quantile(q).unwrap();
+                });
+            },
+        );
     }
 
     group.finish();
@@ -80,4 +90,3 @@ fn bench_quantile(c: &mut Criterion) {
 
 criterion_group!(benches, bench_insert, bench_merge, bench_quantile);
 criterion_main!(benches);
-

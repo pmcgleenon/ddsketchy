@@ -1,14 +1,14 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use rand::{rngs::StdRng, Rng, SeedableRng};
 use dd_sketchy::DDSketch;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 
 fn bench_insert(c: &mut Criterion) {
     let mut group = c.benchmark_group("insert_throughput");
     for &size in &[1_000, 10_000, 100_000] {
         // Pre-generate random numbers
         let mut rng = StdRng::seed_from_u64(42);
-        let values: Vec<f64> = (0..size).map(|_| rng.gen()).collect();
-        
+        let values: Vec<f64> = (0..size).map(|_| rng.random()).collect();
+
         group.bench_with_input(BenchmarkId::new("ddsketchy", size), &size, |b, &_n| {
             let mut sketch = DDSketch::new(0.01).expect("Failed to create sketch");
             b.iter(|| {
@@ -24,11 +24,11 @@ fn bench_insert(c: &mut Criterion) {
 fn bench_merge(c: &mut Criterion) {
     let mut group = c.benchmark_group("merge_throughput");
     let mut rng = StdRng::seed_from_u64(42);
-    
+
     // Pre-generate random numbers
-    let values1: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
-    let values2: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
-    
+    let values1: Vec<f64> = (0..100_000).map(|_| rng.random()).collect();
+    let values2: Vec<f64> = (0..100_000).map(|_| rng.random()).collect();
+
     // prepare two different sketches
     let sketch1 = {
         let mut s = DDSketch::new(0.01).expect("Failed to create sketch1");
@@ -45,19 +45,21 @@ fn bench_merge(c: &mut Criterion) {
         s
     };
 
-    group.bench_function("ddsketchy", |b| b.iter(|| {
-        let mut s = sketch1.clone();
-        s.merge(&sketch2).unwrap();
-    }));
+    group.bench_function("ddsketchy", |b| {
+        b.iter(|| {
+            let mut s = sketch1.clone();
+            s.merge(&sketch2).unwrap();
+        })
+    });
     group.finish();
 }
 
 fn bench_quantile(c: &mut Criterion) {
     let mut group = c.benchmark_group("quantile_throughput");
     let mut rng = StdRng::seed_from_u64(42);
-    
+
     // Pre-generate random numbers and create a sketch
-    let values: Vec<f64> = (0..100_000).map(|_| rng.gen()).collect();
+    let values: Vec<f64> = (0..100_000).map(|_| rng.random()).collect();
     let sketch = {
         let mut s = DDSketch::new(0.01).expect("Failed to create sketch");
         for &v in &values {
@@ -68,13 +70,17 @@ fn bench_quantile(c: &mut Criterion) {
 
     // Benchmark different quantile queries
     for &quantile in &[0.0, 0.25, 0.5, 0.75, 0.99, 1.0] {
-        group.bench_with_input(BenchmarkId::new("ddsketchy", quantile), &quantile, |b, &q| {
-            let mut result = 0.0;
-            b.iter(|| {
-                result += sketch.quantile(q).unwrap();
-                criterion::black_box(result);
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::new("ddsketchy", quantile),
+            &quantile,
+            |b, &q| {
+                let mut result = 0.0;
+                b.iter(|| {
+                    result += sketch.quantile(q).unwrap();
+                    std::hint::black_box(result);
+                });
+            },
+        );
     }
 
     group.finish();
