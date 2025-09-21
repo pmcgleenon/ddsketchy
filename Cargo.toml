@@ -1,5 +1,5 @@
 [package]
-name = "dd-sketchy"
+name = "ddsketchy"
 version = "0.1.0"
 authors = ["Patrick McGleenon"]
 edition = "2021"
@@ -12,7 +12,7 @@ repository = "https://github.com/pmcgleenon/ddsketchy"
 keywords = ["ddsketch", "sketch", "data-structure"]
 
 [[bench]]
-name = "dd_sketchy_bench"
+name = "ddsketchy_bench"
 harness = false
 
 [[bench]]

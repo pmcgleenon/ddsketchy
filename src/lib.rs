@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 
-mod dd_sketchy;
+mod ddsketchy;
 
 #[cfg(test)]
-mod dd_sketchy_test;
+mod ddsketchy_test;
 
 #[cfg(test)]
 mod datadog_reference_tests;
@@ -12,4 +12,4 @@ mod datadog_reference_tests;
 #[cfg(test)]
 mod serde_tests;
 
-pub use dd_sketchy::{DDSketch, DDSketchBuilder, DDSketchError};
+pub use ddsketchy::{DDSketch, DDSketchBuilder, DDSketchError};

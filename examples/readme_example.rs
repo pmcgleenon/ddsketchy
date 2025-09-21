@@ -1,4 +1,4 @@
-use dd_sketchy::{DDSketch, DDSketchError};
+use ddsketchy::{DDSketch, DDSketchError};
 
 fn main() -> Result<(), DDSketchError> {
     // Create a new sketch with 1% relative error

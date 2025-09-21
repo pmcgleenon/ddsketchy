@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use dd_sketchy::DDSketch;
+use ddsketchy::DDSketch;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 fn bench_insert(c: &mut Criterion) {

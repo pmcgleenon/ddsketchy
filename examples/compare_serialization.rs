@@ -1,6 +1,6 @@
 #[cfg(feature = "serde")]
 fn main() {
-    use dd_sketchy::DDSketch;
+    use ddsketchy::DDSketch;
 
     println!("=== DDSketch Serialization Comparison ===\n");
 

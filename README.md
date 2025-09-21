@@ -1,11 +1,11 @@
-![DDSketchy Logo](assets/sketchy.jpg)
+![DDSketchy Logo](https://raw.githubusercontent.com/pmcgleenon/ddsketchy/main/assets/sketchy.jpg)
 
-# dd-sketchy
+# ddsketchy
 
 This is a Rust implementation of the [DDSketch](https://arxiv.org/pdf/1908.10693.pdf) quantile sketch algorithm. 
 DDSketch is a fully-mergeable quantile sketch with relative-error guarantees.
 
-# dd-sketchy Features
+# ddsketchy Features
 
 * Implements the DDSketch algorithm with configurable relative error guarantees
 * Optimized for high-throughput data collection scenarios
@@ -14,7 +14,7 @@ DDSketch is a fully-mergeable quantile sketch with relative-error guarantees.
 ## Usage
 
 ```rust
-use dd_sketchy::{DDSketch, DDSketchError};
+use ddsketchy::{DDSketch, DDSketchError};
 
 fn main() -> Result<(), DDSketchError> {
     // Create a new sketch with 1% relative error
@@ -41,16 +41,16 @@ fn main() -> Result<(), DDSketchError> {
 
 ## Serialization Support
 
-dd-sketchy supports optional serialization via [serde](https://serde.rs/). **Serialization is disabled by default** to keep the library dependency-free. To enable it, add the `serde` feature:
+ddsketchy supports optional serialization via [serde](https://serde.rs/). **Serialization is disabled by default** to keep the library dependency-free. To enable it, add the `serde` feature:
 
 ```toml
 [dependencies]
-dd-sketchy = { version = "0.1", features = ["serde"] }
+ddsketchy = { version = "0.1", features = ["serde"] }
 serde_json = "1.0"  # or other serde formats
 ```
 
 ```rust
-use dd_sketchy::DDSketch;
+use ddsketchy::DDSketch;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sketch = DDSketch::new(0.01)?;

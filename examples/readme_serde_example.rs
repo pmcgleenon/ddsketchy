@@ -1,6 +1,6 @@
 #[cfg(feature = "serde")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use dd_sketchy::DDSketch;
+    use ddsketchy::DDSketch;
 
     let mut sketch = DDSketch::new(0.01)?;
     sketch.add(1.0);
