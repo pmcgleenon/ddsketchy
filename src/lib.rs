@@ -8,9 +8,6 @@ mod dd_sketchy_test;
 #[cfg(test)]
 mod datadog_reference_tests;
 
-
-
-
 #[cfg(feature = "serde")]
 #[cfg(test)]
 mod serde_tests;

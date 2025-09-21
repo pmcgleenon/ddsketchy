@@ -164,13 +164,13 @@ impl DDSketch {
         let abs_key = if log_gamma >= 0.0 {
             log_gamma as i64
         } else {
-            log_gamma as i64 - 1  // Equivalent to floor for negative values
+            log_gamma as i64 - 1 // Equivalent to floor for negative values
         };
 
         // Handle negative values by using negative keys
         if value < 0.0 {
             if abs_key == 0 {
-                -1  // Ensure negative values never map to key 0
+                -1 // Ensure negative values never map to key 0
             } else {
                 -abs_key
             }
@@ -202,7 +202,7 @@ impl DDSketch {
         let new_max_key = new_max_key.max(self.max_key);
 
         let range_size = new_max_key.saturating_sub(new_min_key).saturating_add(1);
-        if range_size < 0 || range_size > i64::MAX / 2 {
+        if !(0..=i64::MAX / 2).contains(&range_size) {
             // Range too large, force collapsing
             self.adjust(new_min_key, new_max_key);
             return;
@@ -323,11 +323,11 @@ impl DDSketch {
             let abs_key = if log_gamma >= 0.0 {
                 log_gamma as i64
             } else {
-                log_gamma as i64 - 1  // Equivalent to floor for negative values
+                log_gamma as i64 - 1 // Equivalent to floor for negative values
             };
             let key = if value < 0.0 {
                 if abs_key == 0 {
-                    -1  // Ensure negative values never map to key 0
+                    -1 // Ensure negative values never map to key 0
                 } else {
                     -abs_key
                 }
@@ -459,17 +459,29 @@ impl DDSketch {
 
     // Debug methods for testing
     #[cfg(test)]
-    pub fn zero_count(&self) -> u64 { self.zero_count }
+    pub fn zero_count(&self) -> u64 {
+        self.zero_count
+    }
     #[cfg(test)]
-    pub fn min_key(&self) -> i64 { self.min_key }
+    pub fn min_key(&self) -> i64 {
+        self.min_key
+    }
     #[cfg(test)]
-    pub fn max_key(&self) -> i64 { self.max_key }
+    pub fn max_key(&self) -> i64 {
+        self.max_key
+    }
     #[cfg(test)]
-    pub fn bins(&self) -> &[u64] { &self.bins }
+    pub fn bins(&self) -> &[u64] {
+        &self.bins
+    }
     #[cfg(test)]
-    pub fn debug_key_to_value(&self, key: i64) -> f64 { self.key_to_value(key) }
+    pub fn debug_key_to_value(&self, key: i64) -> f64 {
+        self.key_to_value(key)
+    }
     #[cfg(test)]
-    pub fn key_epsilon(&self) -> f64 { self.key_epsilon }
+    pub fn key_epsilon(&self) -> f64 {
+        self.key_epsilon
+    }
 
     /// Returns the minimum value added to the sketch
     /// Returns f64::INFINITY if the sketch is empty

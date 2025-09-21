@@ -10,8 +10,8 @@ const FLOATING_POINT_ACCEPTABLE_ERROR: f64 = 1e-11;
 
 /// Test quantiles used in DataDog validation
 const VALIDATION_QUANTILES: [f64; 21] = [
-    0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5,
-    0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0
+    0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8,
+    0.85, 0.9, 0.95, 1.0,
 ];
 
 /// Relative accuracy levels to test - from DataDog Java tests
@@ -43,8 +43,16 @@ fn test_datadog_constant_values() {
         assert_eq!(sketch.count(), 100);
         assert_eq!(sketch.min(), constant_value);
         assert_eq!(sketch.max(), constant_value);
-        assert_relative_eq!(sketch.sum(), constant_value * 100.0, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
-        assert_relative_eq!(sketch.mean(), constant_value, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
+        assert_relative_eq!(
+            sketch.sum(),
+            constant_value * 100.0,
+            max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+        );
+        assert_relative_eq!(
+            sketch.mean(),
+            constant_value,
+            max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+        );
     }
 }
 
@@ -63,7 +71,11 @@ fn test_datadog_mixed_sign_values() {
     assert_eq!(sketch.count(), 2);
     assert_eq!(sketch.min(), -7.0);
     assert_eq!(sketch.max(), 0.33);
-    assert_relative_eq!(sketch.sum(), 0.33 + (-7.0), max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
+    assert_relative_eq!(
+        sketch.sum(),
+        0.33 + (-7.0),
+        max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+    );
 
     // Validate quantiles with DataDog tolerance
     assert_relative_eq!(sketch.quantile(0.0).unwrap(), -7.0, max_relative = alpha);
@@ -71,7 +83,11 @@ fn test_datadog_mixed_sign_values() {
 
     // 50th percentile should be between the two values
     let median = sketch.quantile(0.5).unwrap();
-    assert!(median >= -7.0 && median <= 0.33, "Median {} out of range [-7.0, 0.33]", median);
+    assert!(
+        (-7.0..=0.33).contains(&median),
+        "Median {} out of range [-7.0, 0.33]",
+        median
+    );
 }
 
 #[test]
@@ -93,8 +109,16 @@ fn test_datadog_linear_sequence() {
     assert_eq!(sketch.count(), 100);
     assert_eq!(sketch.min(), 1.0);
     assert_eq!(sketch.max(), 100.0);
-    assert_relative_eq!(sketch.sum(), 5050.0, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR); // 1+2+...+100 = 5050
-    assert_relative_eq!(sketch.mean(), 50.5, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
+    assert_relative_eq!(
+        sketch.sum(),
+        5050.0,
+        max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+    ); // 1+2+...+100 = 5050
+    assert_relative_eq!(
+        sketch.mean(),
+        50.5,
+        max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+    );
 
     // Validate quantiles with expected relative accuracy
     for &q in &VALIDATION_QUANTILES {
@@ -102,7 +126,11 @@ fn test_datadog_linear_sequence() {
             // Min/max should be exact
             let result = sketch.quantile(q).unwrap();
             let expected = if q == 0.0 { 1.0 } else { 100.0 };
-            assert_relative_eq!(result, expected, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
+            assert_relative_eq!(
+                result,
+                expected,
+                max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+            );
         } else {
             // Other quantiles should be within relative accuracy
             let result = sketch.quantile(q).unwrap();
@@ -111,9 +139,15 @@ fn test_datadog_linear_sequence() {
 
             // Allow DDSketch error + floating point error
             let tolerance = expected_value.abs() * alpha + FLOATING_POINT_ACCEPTABLE_ERROR;
-            assert!((result - expected_value).abs() <= tolerance,
+            assert!(
+                (result - expected_value).abs() <= tolerance,
                 "Quantile {} failed: got {}, expected ~{}, diff {}, tolerance {}",
-                q, result, expected_value, (result - expected_value).abs(), tolerance);
+                q,
+                result,
+                expected_value,
+                (result - expected_value).abs(),
+                tolerance
+            );
         }
     }
 }
@@ -135,11 +169,15 @@ fn test_datadog_exponential_sequence() {
 
     // Validate exact statistics
     assert_eq!(sketch.count(), 11);
-    assert_eq!(sketch.min(), 1.0);  // 2^0
-    assert_eq!(sketch.max(), 1024.0);  // 2^10
+    assert_eq!(sketch.min(), 1.0); // 2^0
+    assert_eq!(sketch.max(), 1024.0); // 2^10
 
     // Expected sum: 2^0 + 2^1 + ... + 2^10 = 2^11 - 1 = 2047
-    assert_relative_eq!(sketch.sum(), 2047.0, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
+    assert_relative_eq!(
+        sketch.sum(),
+        2047.0,
+        max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+    );
 
     // Validate quantiles
     for &q in &VALIDATION_QUANTILES {
@@ -148,21 +186,35 @@ fn test_datadog_exponential_sequence() {
         if q == 0.0 {
             assert_relative_eq!(result, 1.0, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
         } else if q == 1.0 {
-            assert_relative_eq!(result, 1024.0, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
+            assert_relative_eq!(
+                result,
+                1024.0,
+                max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+            );
         } else {
             // Quantile should be within DDSketch bounds
-            assert!(result >= 1.0 && result <= 1024.0,
-                "Quantile {} = {} out of bounds [1.0, 1024.0]", q, result);
+            assert!(
+                (1.0..=1024.0).contains(&result),
+                "Quantile {} = {} out of bounds [1.0, 1024.0]",
+                q,
+                result
+            );
 
             // For exponential data, verify relative accuracy
             let expected_index = (q * 10.0) as usize;
             let expected_value = expected_values[expected_index.min(10)];
             let tolerance = expected_value * alpha + FLOATING_POINT_ACCEPTABLE_ERROR;
 
-            assert!((result - expected_value).abs() <= tolerance ||
-                    result >= expected_value * (1.0 - alpha) && result <= expected_value * (1.0 + alpha),
+            assert!(
+                (result - expected_value).abs() <= tolerance
+                    || result >= expected_value * (1.0 - alpha)
+                        && result <= expected_value * (1.0 + alpha),
                 "Quantile {} failed relative accuracy: got {}, expected ~{}, alpha {}",
-                q, result, expected_value, alpha);
+                q,
+                result,
+                expected_value,
+                alpha
+            );
         }
     }
 }
@@ -182,16 +234,36 @@ fn test_datadog_zero_and_negative_values() {
     assert_eq!(sketch.count(), 6);
     assert_eq!(sketch.min(), -10.0);
     assert_eq!(sketch.max(), 10.0);
-    assert_relative_eq!(sketch.sum(), 0.0, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
-    assert_relative_eq!(sketch.mean(), 0.0, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
+    assert_relative_eq!(
+        sketch.sum(),
+        0.0,
+        max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+    );
+    assert_relative_eq!(
+        sketch.mean(),
+        0.0,
+        max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+    );
 
     // Validate boundary quantiles
-    assert_relative_eq!(sketch.quantile(0.0).unwrap(), -10.0, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
-    assert_relative_eq!(sketch.quantile(1.0).unwrap(), 10.0, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
+    assert_relative_eq!(
+        sketch.quantile(0.0).unwrap(),
+        -10.0,
+        max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+    );
+    assert_relative_eq!(
+        sketch.quantile(1.0).unwrap(),
+        10.0,
+        max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+    );
 
     // Median should be around 0 (between the two zeros in the sorted sequence)
     let median = sketch.quantile(0.5).unwrap();
-    assert!(median >= -1.0 && median <= 1.0, "Median {} should be near 0", median);
+    assert!(
+        (-1.0..=1.0).contains(&median),
+        "Median {} should be near 0",
+        median
+    );
 }
 
 #[test]
@@ -212,7 +284,11 @@ fn test_datadog_single_value() {
         // All quantiles should return the single value
         for &q in &VALIDATION_QUANTILES {
             let result = sketch.quantile(q).unwrap();
-            assert_relative_eq!(result, single_value, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
+            assert_relative_eq!(
+                result,
+                single_value,
+                max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+            );
         }
     }
 }
@@ -237,13 +313,23 @@ fn test_datadog_accuracy_bounds() {
             let result = sketch.quantile(q).unwrap();
 
             // Result should be within sketch bounds
-            assert!(result >= sketch.min() && result <= sketch.max(),
+            assert!(
+                (sketch.min()..=sketch.max()).contains(&result),
                 "Quantile {} = {} outside bounds [{}, {}]",
-                q, result, sketch.min(), sketch.max());
+                q,
+                result,
+                sketch.min(),
+                sketch.max()
+            );
 
             // For this test, just verify the value is reasonable
             // (exact validation would require knowing the precise expected quantile)
-            assert!(result > 0.0, "Quantile {} should be positive, got {}", q, result);
+            assert!(
+                result > 0.0,
+                "Quantile {} should be positive, got {}",
+                q,
+                result
+            );
         }
     }
 }
@@ -271,14 +357,30 @@ fn test_datadog_merge_accuracy() {
     assert_eq!(merged.count(), 100);
     assert_eq!(merged.min(), 1.0);
     assert_eq!(merged.max(), 100.0);
-    assert_relative_eq!(merged.sum(), 5050.0, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
+    assert_relative_eq!(
+        merged.sum(),
+        5050.0,
+        max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+    );
 
     // Quantiles should be accurate for merged data
-    assert_relative_eq!(merged.quantile(0.0).unwrap(), 1.0, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
-    assert_relative_eq!(merged.quantile(1.0).unwrap(), 100.0, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
+    assert_relative_eq!(
+        merged.quantile(0.0).unwrap(),
+        1.0,
+        max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+    );
+    assert_relative_eq!(
+        merged.quantile(1.0).unwrap(),
+        100.0,
+        max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+    );
 
     let median = merged.quantile(0.5).unwrap();
-    assert!(median >= 45.0 && median <= 55.0, "Merged median {} should be around 50", median);
+    assert!(
+        (45.0..=55.0).contains(&median),
+        "Merged median {} should be around 50",
+        median
+    );
 }
 
 #[test]
@@ -313,21 +415,35 @@ fn test_datadog_extreme_values() {
 
     // Validate basic statistics - note that extreme ranges may cause collapsing
     // which can drop some values to stay within bin limits
-    assert!(sketch.count() >= 6 && sketch.count() <= 8, "Count should be 6-8, got {}", sketch.count());
+    assert!(
+        sketch.count() >= 6 && sketch.count() <= 8,
+        "Count should be 6-8, got {}",
+        sketch.count()
+    );
 
     // Min/max should be within reasonable bounds of the added values
-    assert!(sketch.min() >= -near_max && sketch.min() <= very_small);
-    assert!(sketch.max() >= very_small && sketch.max() <= near_max);
+    assert!((-near_max..=very_small).contains(&sketch.min()));
+    assert!((very_small..=near_max).contains(&sketch.max()));
 
     // Test that all quantiles return reasonable values within bounds
     for &q in &[0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0] {
         let result = sketch.quantile(q).unwrap();
 
         // Ensure result is finite and within sketch bounds
-        assert!(result.is_finite(), "Quantile {} should be finite, got {}", q, result);
-        assert!(result >= sketch.min() && result <= sketch.max(),
+        assert!(
+            result.is_finite(),
+            "Quantile {} should be finite, got {}",
+            q,
+            result
+        );
+        assert!(
+            (sketch.min()..=sketch.max()).contains(&result),
             "Quantile {} = {} outside bounds [{}, {}]",
-            q, result, sketch.min(), sketch.max());
+            q,
+            result,
+            sketch.min(),
+            sketch.max()
+        );
     }
 }
 
@@ -356,7 +472,11 @@ fn test_datadog_subnormal_numbers() {
 
     // Quantiles should be reasonable
     let median = sketch.quantile(0.5).unwrap();
-    assert!(median >= -1.0 && median <= 1.0, "Median {} should be between -1 and 1", median);
+    assert!(
+        (-1.0..=1.0).contains(&median),
+        "Median {} should be between -1 and 1",
+        median
+    );
 }
 
 #[test]
@@ -379,13 +499,28 @@ fn test_datadog_special_float_values() {
     sketch.add(f64::NAN);
 
     // Count and sum should not change (special values ignored)
-    assert_eq!(sketch.count(), initial_count, "Special values should not affect count");
-    assert_relative_eq!(sketch.sum(), initial_sum, max_relative = FLOATING_POINT_ACCEPTABLE_ERROR);
+    assert_eq!(
+        sketch.count(),
+        initial_count,
+        "Special values should not affect count"
+    );
+    assert_relative_eq!(
+        sketch.sum(),
+        initial_sum,
+        max_relative = FLOATING_POINT_ACCEPTABLE_ERROR
+    );
 
     // Quantiles should still work properly
     let median = sketch.quantile(0.5).unwrap();
-    assert!(median.is_finite(), "Median should be finite after adding special values");
-    assert!(median >= 1.5 && median <= 2.5, "Median {} should be approximately 2.0", median);
+    assert!(
+        median.is_finite(),
+        "Median should be finite after adding special values"
+    );
+    assert!(
+        (1.5..=2.5).contains(&median),
+        "Median {} should be approximately 2.0",
+        median
+    );
 }
 
 #[test]
@@ -395,9 +530,7 @@ fn test_datadog_large_magnitude_range() {
     let mut sketch = DDSketch::new(alpha).unwrap();
 
     // Add values spanning 20+ orders of magnitude
-    let base_values = [
-        1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1e0, 1e2, 1e4, 1e6, 1e8, 1e10,
-    ];
+    let base_values = [1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1e0, 1e2, 1e4, 1e6, 1e8, 1e10];
 
     for &value in &base_values {
         sketch.add(value);
@@ -413,13 +546,22 @@ fn test_datadog_large_magnitude_range() {
         let result = sketch.quantile(q).unwrap();
 
         // Ensure result is within bounds and reasonable
-        assert!(result >= sketch.min() && result <= sketch.max(),
+        assert!(
+            (sketch.min()..=sketch.max()).contains(&result),
             "Quantile {} = {} outside bounds [{}, {}]",
-            q, result, sketch.min(), sketch.max());
+            q,
+            result,
+            sketch.min(),
+            sketch.max()
+        );
 
         // For this symmetric distribution, median should be reasonable
         if q == 0.5 {
-            assert!(result.abs() <= 1e-8, "Median {} should be close to zero for symmetric distribution", result);
+            assert!(
+                result.abs() <= 1e-8,
+                "Median {} should be close to zero for symmetric distribution",
+                result
+            );
         }
     }
 }
@@ -451,9 +593,14 @@ fn test_datadog_precision_boundaries() {
     for &q in &[0.0, 0.25, 0.5, 0.75, 1.0] {
         let result = sketch.quantile(q).unwrap();
         assert!(result.is_finite(), "Quantile {} should be finite", q);
-        assert!(result >= sketch.min() && result <= sketch.max(),
+        assert!(
+            result >= sketch.min() && result <= sketch.max(),
             "Quantile {} = {} outside bounds [{}, {}]",
-            q, result, sketch.min(), sketch.max());
+            q,
+            result,
+            sketch.min(),
+            sketch.max()
+        );
     }
 }
 
@@ -466,9 +613,9 @@ fn test_datadog_mapping_precision() {
     // Test values near bin boundaries to validate mapping precision
     let test_values = [
         1.0, 1.01, 1.02, 1.03, // Values that should map to consecutive or same bins
-        10.0, 10.1, 10.2,     // Different magnitude
-        100.0, 100.5, 101.0,  // Another magnitude
-        0.1, 0.11, 0.12,      // Small values
+        10.0, 10.1, 10.2, // Different magnitude
+        100.0, 100.5, 101.0, // Another magnitude
+        0.1, 0.11, 0.12, // Small values
     ];
 
     for &value in &test_values {
@@ -480,12 +627,22 @@ fn test_datadog_mapping_precision() {
         let result = sketch.quantile(q).unwrap();
 
         // Must be within actual data bounds
-        assert!(result >= sketch.min() && result <= sketch.max(),
+        assert!(
+            (sketch.min()..=sketch.max()).contains(&result),
             "Quantile {} = {} outside data bounds [{}, {}]",
-            q, result, sketch.min(), sketch.max());
+            q,
+            result,
+            sketch.min(),
+            sketch.max()
+        );
 
         // Must be finite
-        assert!(result.is_finite(), "Quantile {} must be finite, got {}", q, result);
+        assert!(
+            result.is_finite(),
+            "Quantile {} must be finite, got {}",
+            q,
+            result
+        );
     }
 
     // Test that similar values give similar quantile results (consistency)
@@ -520,16 +677,25 @@ fn test_datadog_bin_boundary_precision() {
         // Should be within the range of added values
         let min_val = base - 2.0 * epsilon;
         let max_val = base + 2.0 * epsilon;
-        assert!(result >= min_val && result <= max_val,
+        assert!(
+            (min_val..=max_val).contains(&result),
             "Quantile {} = {} outside expected range [{}, {}]",
-            q, result, min_val, max_val);
+            q,
+            result,
+            min_val,
+            max_val
+        );
     }
 
     // Median should be close to base value
     let median = sketch.quantile(0.5).unwrap();
     let relative_error = (median - base).abs() / base;
-    assert!(relative_error <= alpha * 2.0,
-        "Median relative error {} exceeds 2*alpha {}", relative_error, alpha * 2.0);
+    assert!(
+        relative_error <= alpha * 2.0,
+        "Median relative error {} exceeds 2*alpha {}",
+        relative_error,
+        alpha * 2.0
+    );
 }
 
 #[test]
@@ -559,15 +725,35 @@ fn test_datadog_consecutive_value_mapping() {
     assert_eq!(q100, 20.0, "Max quantile should be exact");
 
     // Intermediate quantiles should be reasonable
-    assert!(q25 >= 1.0 && q25 <= 20.0, "Q25 {} out of range", q25);
-    assert!(q50 >= 1.0 && q50 <= 20.0, "Q50 {} out of range", q50);
-    assert!(q75 >= 1.0 && q75 <= 20.0, "Q75 {} out of range", q75);
+    assert!((1.0..=20.0).contains(&q25), "Q25 {} out of range", q25);
+    assert!((1.0..=20.0).contains(&q50), "Q50 {} out of range", q50);
+    assert!((1.0..=20.0).contains(&q75), "Q75 {} out of range", q75);
 
     // Quantiles should be ordered
-    assert!(q0 <= q25, "Quantiles should be ordered: q0 {} <= q25 {}", q0, q25);
-    assert!(q25 <= q50, "Quantiles should be ordered: q25 {} <= q50 {}", q25, q50);
-    assert!(q50 <= q75, "Quantiles should be ordered: q50 {} <= q75 {}", q50, q75);
-    assert!(q75 <= q100, "Quantiles should be ordered: q75 {} <= q100 {}", q75, q100);
+    assert!(
+        q0 <= q25,
+        "Quantiles should be ordered: q0 {} <= q25 {}",
+        q0,
+        q25
+    );
+    assert!(
+        q25 <= q50,
+        "Quantiles should be ordered: q25 {} <= q50 {}",
+        q25,
+        q50
+    );
+    assert!(
+        q50 <= q75,
+        "Quantiles should be ordered: q50 {} <= q75 {}",
+        q50,
+        q75
+    );
+    assert!(
+        q75 <= q100,
+        "Quantiles should be ordered: q75 {} <= q100 {}",
+        q75,
+        q100
+    );
 }
 
 #[test]
@@ -587,16 +773,24 @@ fn test_datadog_relative_accuracy_validation() {
         let result = sketch.quantile(q).unwrap();
 
         // Result must be within data bounds
-        assert!(result >= sketch.min() && result <= sketch.max(),
+        assert!(
+            (sketch.min()..=sketch.max()).contains(&result),
             "Quantile {} = {} outside bounds [{}, {}]",
-            q, result, sketch.min(), sketch.max());
+            q,
+            result,
+            sketch.min(),
+            sketch.max()
+        );
 
         // For this specific dataset, verify relative accuracy makes sense
         // The result should be within reasonable relative error of expected values
         if q == 0.5 {
             // Median should be somewhere in the middle range
-            assert!(result >= 10.0 && result <= 500.0,
-                "Median {} seems unreasonable for dataset", result);
+            assert!(
+                (10.0..=500.0).contains(&result),
+                "Median {} seems unreasonable for dataset",
+                result
+            );
         }
     }
 }
@@ -614,7 +808,7 @@ fn test_datadog_edge_quantiles() {
 
     // Test quantiles very close to the edges
     let edge_quantiles = [
-        0.0001, 0.001, 0.01, 0.05,  // Near minimum
+        0.0001, 0.001, 0.01, 0.05, // Near minimum
         0.95, 0.99, 0.999, 0.9999, // Near maximum
     ];
 
@@ -623,16 +817,31 @@ fn test_datadog_edge_quantiles() {
 
         // Must be finite and within bounds
         assert!(result.is_finite(), "Edge quantile {} must be finite", q);
-        assert!(result >= sketch.min() && result <= sketch.max(),
+        assert!(
+            result >= sketch.min() && result <= sketch.max(),
             "Edge quantile {} = {} outside bounds [{}, {}]",
-            q, result, sketch.min(), sketch.max());
+            q,
+            result,
+            sketch.min(),
+            sketch.max()
+        );
 
         // For this dataset, verify reasonable bounds
         if q <= 0.05 {
-            assert!(result <= 100.0, "Low quantile {} = {} seems too high", q, result);
+            assert!(
+                result <= 100.0,
+                "Low quantile {} = {} seems too high",
+                q,
+                result
+            );
         }
         if q >= 0.95 {
-            assert!(result >= 900.0, "High quantile {} = {} seems too low", q, result);
+            assert!(
+                result >= 900.0,
+                "High quantile {} = {} seems too low",
+                q,
+                result
+            );
         }
     }
 
@@ -642,8 +851,18 @@ fn test_datadog_edge_quantiles() {
     let q95 = sketch.quantile(0.95).unwrap();
     let q99 = sketch.quantile(0.999).unwrap();
 
-    assert!(q1 <= q5, "Edge quantiles should be ordered: {} <= {}", q1, q5);
-    assert!(q95 <= q99, "Edge quantiles should be ordered: {} <= {}", q95, q99);
+    assert!(
+        q1 <= q5,
+        "Edge quantiles should be ordered: {} <= {}",
+        q1,
+        q5
+    );
+    assert!(
+        q95 <= q99,
+        "Edge quantiles should be ordered: {} <= {}",
+        q95,
+        q99
+    );
 }
 
 #[test]
@@ -669,14 +888,23 @@ fn test_datadog_quantile_stability_under_duplicates() {
         let result = sketch.quantile(q).unwrap();
 
         // Should be reasonably close to the dominant value
-        assert!(result >= 1.0 && result <= 100.0, "Quantile {} = {} out of range", q, result);
+        assert!(
+            (1.0..=100.0).contains(&result),
+            "Quantile {} = {} out of range",
+            q,
+            result
+        );
 
         // Most quantiles should be closer to 42 than to the outliers
-        if q >= 0.2 && q <= 0.8 {
+        if (0.2..=0.8).contains(&q) {
             let distance_to_42 = (result - duplicate_value).abs();
             let distance_to_outliers = (result - 1.0).abs().min((result - 100.0).abs());
-            assert!(distance_to_42 <= distance_to_outliers * 2.0,
-                "Quantile {} = {} should be closer to dominant value 42", q, result);
+            assert!(
+                distance_to_42 <= distance_to_outliers * 2.0,
+                "Quantile {} = {} should be closer to dominant value 42",
+                q,
+                result
+            );
         }
     }
 }
@@ -695,8 +923,8 @@ fn test_datadog_quantile_monotonicity() {
 
     // Test many quantiles to verify monotonicity
     let quantiles = [
-        0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45,
-        0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0
+        0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75,
+        0.8, 0.85, 0.9, 0.95, 1.0,
     ];
 
     let mut results = Vec::new();
@@ -711,9 +939,14 @@ fn test_datadog_quantile_monotonicity() {
         let (q1, result1) = results[i - 1];
         let (q2, result2) = results[i];
 
-        assert!(result1 <= result2,
+        assert!(
+            result1 <= result2,
             "Quantiles not monotonic: quantile({}) = {} > quantile({}) = {}",
-            q1, result1, q2, result2);
+            q1,
+            result1,
+            q2,
+            result2
+        );
     }
 }
 
@@ -733,8 +966,12 @@ fn test_datadog_quantile_precision_near_boundaries() {
         let result = sketch.quantile(q).unwrap();
 
         // Verify within bounds
-        assert!(result >= 0.0 && result <= 99.0,
-            "Quantile {} = {} outside bounds [0, 99]", q, result);
+        assert!(
+            (0.0..=99.0).contains(&result),
+            "Quantile {} = {} outside bounds [0, 99]",
+            q,
+            result
+        );
 
         // For boundary quantiles, check exact values
         if q == 0.0 {
@@ -743,8 +980,12 @@ fn test_datadog_quantile_precision_near_boundaries() {
             assert_eq!(result, 99.0, "Maximum quantile should be exact");
         } else {
             // For intermediate quantiles, just verify they're reasonable and ordered
-            assert!(result > 0.0 && result < 99.0,
-                "Quantile {} = {} should be between bounds", q, result);
+            assert!(
+                result > 0.0 && result < 99.0,
+                "Quantile {} = {} should be between bounds",
+                q,
+                result
+            );
         }
     }
 
@@ -760,21 +1001,42 @@ fn test_datadog_quantile_precision_near_boundaries() {
 #[test]
 fn test_error_handling_invalid_alpha() {
     // Test alpha = 0 (boundary)
-    assert!(matches!(DDSketch::new(0.0), Err(DDSketchError::InvalidAlpha)));
+    assert!(matches!(
+        DDSketch::new(0.0),
+        Err(DDSketchError::InvalidAlpha)
+    ));
 
     // Test alpha = 1 (boundary)
-    assert!(matches!(DDSketch::new(1.0), Err(DDSketchError::InvalidAlpha)));
+    assert!(matches!(
+        DDSketch::new(1.0),
+        Err(DDSketchError::InvalidAlpha)
+    ));
 
     // Test negative alpha
-    assert!(matches!(DDSketch::new(-0.1), Err(DDSketchError::InvalidAlpha)));
+    assert!(matches!(
+        DDSketch::new(-0.1),
+        Err(DDSketchError::InvalidAlpha)
+    ));
 
     // Test alpha > 1
-    assert!(matches!(DDSketch::new(1.5), Err(DDSketchError::InvalidAlpha)));
+    assert!(matches!(
+        DDSketch::new(1.5),
+        Err(DDSketchError::InvalidAlpha)
+    ));
 
     // Test special float values
-    assert!(matches!(DDSketch::new(f64::NAN), Err(DDSketchError::InvalidAlpha)));
-    assert!(matches!(DDSketch::new(f64::INFINITY), Err(DDSketchError::InvalidAlpha)));
-    assert!(matches!(DDSketch::new(f64::NEG_INFINITY), Err(DDSketchError::InvalidAlpha)));
+    assert!(matches!(
+        DDSketch::new(f64::NAN),
+        Err(DDSketchError::InvalidAlpha)
+    ));
+    assert!(matches!(
+        DDSketch::new(f64::INFINITY),
+        Err(DDSketchError::InvalidAlpha)
+    ));
+    assert!(matches!(
+        DDSketch::new(f64::NEG_INFINITY),
+        Err(DDSketchError::InvalidAlpha)
+    ));
 
     // Test valid boundary cases
     assert!(DDSketch::new(0.001).is_ok());
@@ -786,26 +1048,56 @@ fn test_error_handling_invalid_quantiles() {
     let sketch = DDSketch::new(0.01).unwrap();
 
     // Test quantile < 0
-    assert!(matches!(sketch.quantile(-0.1), Err(DDSketchError::InvalidQuantile)));
-    assert!(matches!(sketch.quantile(-1.0), Err(DDSketchError::InvalidQuantile)));
+    assert!(matches!(
+        sketch.quantile(-0.1),
+        Err(DDSketchError::InvalidQuantile)
+    ));
+    assert!(matches!(
+        sketch.quantile(-1.0),
+        Err(DDSketchError::InvalidQuantile)
+    ));
 
     // Test quantile > 1
-    assert!(matches!(sketch.quantile(1.1), Err(DDSketchError::InvalidQuantile)));
-    assert!(matches!(sketch.quantile(2.0), Err(DDSketchError::InvalidQuantile)));
+    assert!(matches!(
+        sketch.quantile(1.1),
+        Err(DDSketchError::InvalidQuantile)
+    ));
+    assert!(matches!(
+        sketch.quantile(2.0),
+        Err(DDSketchError::InvalidQuantile)
+    ));
 
     // Test special float values
-    assert!(matches!(sketch.quantile(f64::NAN), Err(DDSketchError::InvalidQuantile)));
-    assert!(matches!(sketch.quantile(f64::INFINITY), Err(DDSketchError::InvalidQuantile)));
-    assert!(matches!(sketch.quantile(f64::NEG_INFINITY), Err(DDSketchError::InvalidQuantile)));
+    assert!(matches!(
+        sketch.quantile(f64::NAN),
+        Err(DDSketchError::InvalidQuantile)
+    ));
+    assert!(matches!(
+        sketch.quantile(f64::INFINITY),
+        Err(DDSketchError::InvalidQuantile)
+    ));
+    assert!(matches!(
+        sketch.quantile(f64::NEG_INFINITY),
+        Err(DDSketchError::InvalidQuantile)
+    ));
 
     // Test valid boundary cases
     assert!(sketch.quantile(0.0).is_ok());
     assert!(sketch.quantile(1.0).is_ok());
 
     // Test quantile_opt with same invalid inputs
-    assert!(matches!(sketch.quantile_opt(-0.1), Err(DDSketchError::InvalidQuantile)));
-    assert!(matches!(sketch.quantile_opt(1.1), Err(DDSketchError::InvalidQuantile)));
-    assert!(matches!(sketch.quantile_opt(f64::NAN), Err(DDSketchError::InvalidQuantile)));
+    assert!(matches!(
+        sketch.quantile_opt(-0.1),
+        Err(DDSketchError::InvalidQuantile)
+    ));
+    assert!(matches!(
+        sketch.quantile_opt(1.1),
+        Err(DDSketchError::InvalidQuantile)
+    ));
+    assert!(matches!(
+        sketch.quantile_opt(f64::NAN),
+        Err(DDSketchError::InvalidQuantile)
+    ));
 }
 
 #[test]
@@ -816,7 +1108,10 @@ fn test_error_handling_alpha_mismatch_merge() {
     sketch1.add(1.0);
 
     // Should fail due to different alpha values
-    assert!(matches!(sketch1.merge(&sketch2), Err(DDSketchError::AlphaMismatch)));
+    assert!(matches!(
+        sketch1.merge(&sketch2),
+        Err(DDSketchError::AlphaMismatch)
+    ));
 
     // Test merge with identical alpha should succeed
     let sketch3 = DDSketch::new(0.01).unwrap();
@@ -925,17 +1220,11 @@ fn test_round_trip_mapping_correctness() {
     // Test values spanning different scales
     let test_values = vec![
         // Very small positive values
-        1e-15, 1e-10, 1e-6, 1e-3,
-        // Small values around 1
-        0.1, 0.5, 1.0, 2.0, 10.0,
-        // Medium values
-        100.0, 1000.0, 10000.0,
-        // Large values
-        1e6, 1e9, 1e12, 1e15,
-        // Negative values (symmetric)
-        -1e-15, -1e-10, -1e-6, -1e-3,
-        -0.1, -0.5, -1.0, -2.0, -10.0,
-        -100.0, -1000.0, -10000.0,
+        1e-15, 1e-10, 1e-6, 1e-3, // Small values around 1
+        0.1, 0.5, 1.0, 2.0, 10.0, // Medium values
+        100.0, 1000.0, 10000.0, // Large values
+        1e6, 1e9, 1e12, 1e15, // Negative values (symmetric)
+        -1e-15, -1e-10, -1e-6, -1e-3, -0.1, -0.5, -1.0, -2.0, -10.0, -100.0, -1000.0, -10000.0,
         -1e6, -1e9, -1e12, -1e15,
     ];
 
@@ -947,32 +1236,64 @@ fn test_round_trip_mapping_correctness() {
         if value == 0.0 {
             // Zero should map to key 0 and back to zero (approximately)
             assert_eq!(key, 0, "Zero should map to key 0");
-            assert!(reconstructed.abs() <= sketch.key_epsilon(),
+            assert!(
+                reconstructed.abs() <= sketch.key_epsilon(),
                 "Zero reconstruction should be near zero: {} -> key {} -> {}",
-                value, key, reconstructed);
+                value,
+                key,
+                reconstructed
+            );
         } else if value.abs() <= sketch.key_epsilon() {
             // Very small values map to key 0 and reconstruct as small values
             assert_eq!(key, 0, "Small value {} should map to key 0", value);
             // For very small values, we can't expect exact reconstruction due to DDSketch design
             // They are treated as "near zero" and may reconstruct as a representative small value
-            assert!(reconstructed.is_finite(),
+            assert!(
+                reconstructed.is_finite(),
                 "Small value reconstruction should be finite: {} -> key {} -> {}",
-                value, key, reconstructed);
+                value,
+                key,
+                reconstructed
+            );
         } else {
             // For DDSketch, individual key->value reconstruction doesn't guarantee alpha accuracy
             // The accuracy guarantee applies to quantile estimation, not individual value reconstruction
             // So we just verify the reconstruction is finite and has the correct sign
-            assert!(reconstructed.is_finite(),
+            assert!(
+                reconstructed.is_finite(),
                 "Reconstructed value should be finite: {} -> key {} -> {}",
-                value, key, reconstructed);
+                value,
+                key,
+                reconstructed
+            );
 
             // Verify sign consistency for non-zero values (allowing for small values that map to negative keys)
             if value >= 1.0 {
-                assert!(key >= 0, "Large positive value {} should map to non-negative key {}", value, key);
-                assert!(reconstructed > 0.0, "Large positive value reconstruction should be positive: {} -> {}", value, reconstructed);
+                assert!(
+                    key >= 0,
+                    "Large positive value {} should map to non-negative key {}",
+                    value,
+                    key
+                );
+                assert!(
+                    reconstructed > 0.0,
+                    "Large positive value reconstruction should be positive: {} -> {}",
+                    value,
+                    reconstructed
+                );
             } else if value <= -1.0 {
-                assert!(key <= 0, "Large negative value {} should map to non-positive key {}", value, key);
-                assert!(reconstructed < 0.0, "Large negative value reconstruction should be negative: {} -> {}", value, reconstructed);
+                assert!(
+                    key <= 0,
+                    "Large negative value {} should map to non-positive key {}",
+                    value,
+                    key
+                );
+                assert!(
+                    reconstructed < 0.0,
+                    "Large negative value reconstruction should be negative: {} -> {}",
+                    value,
+                    reconstructed
+                );
             }
             // For small values (0 < |value| < 1), we allow any key sign due to logarithmic mapping
         }
@@ -999,9 +1320,14 @@ fn test_mapping_monotonicity() {
         let k1 = sketch.key(v1);
         let k2 = sketch.key(v2);
 
-        assert!(k1 <= k2,
+        assert!(
+            k1 <= k2,
             "Key mapping not monotonic: {} -> key {} vs {} -> key {}",
-            v1, k1, v2, k2);
+            v1,
+            k1,
+            v2,
+            k2
+        );
     }
 
     // Test monotonicity in negative range (reverse order due to negative keys)
@@ -1018,9 +1344,14 @@ fn test_mapping_monotonicity() {
         let k1 = sketch.key(v1);
         let k2 = sketch.key(v2);
 
-        assert!(k1 <= k2,
+        assert!(
+            k1 <= k2,
             "Key mapping not monotonic for negatives: {} -> key {} vs {} -> key {}",
-            v1, k1, v2, k2);
+            v1,
+            k1,
+            v2,
+            k2
+        );
     }
 }
 
@@ -1032,7 +1363,7 @@ fn test_key_mapping_consistency() {
 
     // Test specific values that should map to expected keys
     let test_cases = vec![
-        (1.0, 1), // Base case
+        (1.0, 1),                 // Base case
         (10.0, sketch.key(10.0)), // Verify our own calculation
         (0.1, sketch.key(0.1)),
         (1000.0, sketch.key(1000.0)),
@@ -1056,9 +1387,14 @@ fn test_key_mapping_consistency() {
         let double_value = value * 2.0;
         if double_value.is_finite() {
             let double_key = sketch.key(double_value);
-            assert!(double_key >= positive_key,
+            assert!(
+                double_key >= positive_key,
                 "Key should increase with value: key({}) = {} vs key({}) = {}",
-                value, positive_key, double_value, double_key);
+                value,
+                positive_key,
+                double_value,
+                double_key
+            );
         }
     }
 }
@@ -1086,18 +1422,30 @@ fn test_boundary_value_mapping() {
             let key_above = sketch.key(above);
 
             // Keys should be consistent (either same or increasing)
-            assert!(key_below <= key_base,
+            assert!(
+                key_below <= key_base,
                 "Key should not decrease: key({}) = {} vs key({}) = {}",
-                below, key_below, base_value, key_base);
-            assert!(key_base <= key_above,
+                below,
+                key_below,
+                base_value,
+                key_base
+            );
+            assert!(
+                key_base <= key_above,
                 "Key should not decrease: key({}) = {} vs key({}) = {}",
-                base_value, key_base, above, key_above);
+                base_value,
+                key_base,
+                above,
+                key_above
+            );
 
             // Reconstruct and verify it's finite and reasonable
             let reconstructed_base = sketch.debug_key_to_value(key_base);
-            assert!(reconstructed_base.is_finite(),
+            assert!(
+                reconstructed_base.is_finite(),
                 "Boundary value reconstruction should be finite for {}",
-                base_value);
+                base_value
+            );
             // Note: Individual key->value reconstruction doesn't guarantee alpha accuracy
             // DDSketch accuracy guarantees apply to quantile estimation, not individual value reconstruction
         }
@@ -1125,14 +1473,22 @@ fn test_extreme_value_mapping_stability() {
         let key = sketch.key(value);
 
         // Key should be finite
-        assert!(key != i64::MAX && key != i64::MIN,
-            "Key overflow for value {}: key = {}", value, key);
+        assert!(
+            key != i64::MAX && key != i64::MIN,
+            "Key overflow for value {}: key = {}",
+            value,
+            key
+        );
 
         // Key-to-value should not panic and should produce finite result
         let reconstructed = sketch.debug_key_to_value(key);
-        assert!(reconstructed.is_finite(),
+        assert!(
+            reconstructed.is_finite(),
             "Reconstructed value should be finite for {} -> key {} -> {}",
-            value, key, reconstructed);
+            value,
+            key,
+            reconstructed
+        );
 
         // For very small values, they might map to zero key
         if value.abs() <= sketch.key_epsilon() {
@@ -1161,10 +1517,18 @@ fn test_zero_and_near_zero_mapping() {
     ];
 
     for &value in &tiny_values {
-        assert_eq!(sketch.key(value), 0,
-            "Tiny positive value {} should map to key 0", value);
-        assert_eq!(sketch.key(-value), 0,
-            "Tiny negative value {} should map to key 0", -value);
+        assert_eq!(
+            sketch.key(value),
+            0,
+            "Tiny positive value {} should map to key 0",
+            value
+        );
+        assert_eq!(
+            sketch.key(-value),
+            0,
+            "Tiny negative value {} should map to key 0",
+            -value
+        );
     }
 
     // Values just above key_epsilon should map to non-zero keys
@@ -1178,15 +1542,25 @@ fn test_zero_and_near_zero_mapping() {
         let pos_key = sketch.key(value);
         let neg_key = sketch.key(-value);
 
-        assert_ne!(pos_key, 0,
-            "Small positive value {} should not map to key 0", value);
-        assert_ne!(neg_key, 0,
-            "Small negative value {} should not map to key 0", -value);
+        assert_ne!(
+            pos_key, 0,
+            "Small positive value {} should not map to key 0",
+            value
+        );
+        assert_ne!(
+            neg_key, 0,
+            "Small negative value {} should not map to key 0",
+            -value
+        );
 
         // Note: Due to logarithmic mapping, small values < 1 may map to negative keys
         // This is mathematically correct for DDSketch
-        assert!(pos_key != 0 && neg_key != 0,
-            "Small values {} and {} should not map to key 0 after epsilon threshold", value, -value);
+        assert!(
+            pos_key != 0 && neg_key != 0,
+            "Small values {} and {} should not map to key 0 after epsilon threshold",
+            value,
+            -value
+        );
 
         // Verify sign consistency: if one small value maps positive, similar magnitude should too
         // But we allow negative keys for small positive values due to ln(x) < 0 for x < 1
@@ -1206,13 +1580,13 @@ fn test_stress_large_dataset_performance() {
     // Add diverse range of values to stress test the implementation
     for i in 0..dataset_size {
         let value = match i % 7 {
-            0 => (i as f64) * 0.001,                  // Small values
-            1 => i as f64,                            // Medium values
-            2 => (i as f64) * 1000.0,                 // Large values
-            3 => 1.0 / ((i + 1) as f64),              // Fractional values
-            4 => -((i + 1) as f64),                   // Negative values
-            5 => ((i + 1) as f64).sqrt(),             // Square roots
-            6 => ((i + 1) as f64).ln(),               // Logarithmic values
+            0 => (i as f64) * 0.001,      // Small values
+            1 => i as f64,                // Medium values
+            2 => (i as f64) * 1000.0,     // Large values
+            3 => 1.0 / ((i + 1) as f64),  // Fractional values
+            4 => -((i + 1) as f64),       // Negative values
+            5 => ((i + 1) as f64).sqrt(), // Square roots
+            6 => ((i + 1) as f64).ln(),   // Logarithmic values
             _ => unreachable!(),
         };
 
@@ -1242,22 +1616,35 @@ fn test_stress_large_dataset_performance() {
         results.push((q, result));
 
         assert!(result.is_finite(), "Quantile {} should be finite", q);
-        assert!(result >= sketch.min() && result <= sketch.max(),
+        assert!(
+            result >= sketch.min() && result <= sketch.max(),
             "Quantile {} = {} should be within bounds [{}, {}]",
-            q, result, sketch.min(), sketch.max());
+            q,
+            result,
+            sketch.min(),
+            sketch.max()
+        );
     }
 
     // Verify basic ordering for extreme quantiles (relaxed monotonicity)
     // Note: DDSketch may have minor monotonicity violations due to bin approximation
     // but the extreme quantiles should be roughly ordered
-    let q0 = results[0].1;    // Q0.0
-    let q50 = results[6].1;   // Q0.5 (median)
+    let q0 = results[0].1; // Q0.0
+    let q50 = results[6].1; // Q0.5 (median)
     let q100 = results[10].1; // Q1.0
 
-    assert!(q0 <= q50 || (q50 - q0).abs() / q0.abs() < 0.1,
-        "Q0 {} should be reasonably <= Q50 {}", q0, q50);
-    assert!(q50 <= q100 || (q100 - q50).abs() / q50.abs() < 0.1,
-        "Q50 {} should be reasonably <= Q100 {}", q50, q100);
+    assert!(
+        q0 <= q50 || (q50 - q0).abs() / q0.abs() < 0.1,
+        "Q0 {} should be reasonably <= Q50 {}",
+        q0,
+        q50
+    );
+    assert!(
+        q50 <= q100 || (q100 - q50).abs() / q50.abs() < 0.1,
+        "Q50 {} should be reasonably <= Q100 {}",
+        q50,
+        q100
+    );
 
     // Basic sanity: min and max quantiles should equal sketch min/max
     assert_eq!(q0, sketch.min(), "Q0 should equal sketch minimum");
@@ -1275,7 +1662,10 @@ fn test_stress_batch_operations() {
     let batch_size = 10_000;
     let num_batches = 10;
 
-    println!("Testing {} batches of {} values each", num_batches, batch_size);
+    println!(
+        "Testing {} batches of {} values each",
+        num_batches, batch_size
+    );
 
     for batch in 0..num_batches {
         // Generate a batch of values
@@ -1297,13 +1687,29 @@ fn test_stress_batch_operations() {
         sketch.add_batch(values);
 
         // Verify sketch is still valid after each batch
-        assert!(sketch.count() > 0, "Count should increase after batch {}", batch);
-        assert!(sketch.min().is_finite(), "Min should remain finite after batch {}", batch);
-        assert!(sketch.max().is_finite(), "Max should remain finite after batch {}", batch);
+        assert!(
+            sketch.count() > 0,
+            "Count should increase after batch {}",
+            batch
+        );
+        assert!(
+            sketch.min().is_finite(),
+            "Min should remain finite after batch {}",
+            batch
+        );
+        assert!(
+            sketch.max().is_finite(),
+            "Max should remain finite after batch {}",
+            batch
+        );
 
         // Test a few quantiles to ensure they work
         let median = sketch.quantile(0.5).unwrap();
-        assert!(median.is_finite(), "Median should be finite after batch {}", batch);
+        assert!(
+            median.is_finite(),
+            "Median should be finite after batch {}",
+            batch
+        );
     }
 
     println!("Final count after all batches: {}", sketch.count());
@@ -1319,17 +1725,11 @@ fn test_stress_extreme_scale_values() {
     // Add extreme values that push the limits
     let extreme_values = vec![
         // Very large values
-        1e15, 1e12, 1e9, 1e6,
-        // Medium values
-        1000.0, 100.0, 10.0, 1.0,
-        // Small values
-        0.1, 0.01, 0.001, 0.0001,
-        // Very small values
-        1e-6, 1e-9, 1e-12, 1e-15,
-        // Negative equivalents
-        -1e15, -1e12, -1e9, -1e6,
-        -1000.0, -100.0, -10.0, -1.0,
-        -0.1, -0.01, -0.001, -0.0001,
+        1e15, 1e12, 1e9, 1e6, // Medium values
+        1000.0, 100.0, 10.0, 1.0, // Small values
+        0.1, 0.01, 0.001, 0.0001, // Very small values
+        1e-6, 1e-9, 1e-12, 1e-15, // Negative equivalents
+        -1e15, -1e12, -1e9, -1e6, -1000.0, -100.0, -10.0, -1.0, -0.1, -0.01, -0.001, -0.0001,
         -1e-6, -1e-9, -1e-12, -1e-15,
     ];
 
@@ -1346,15 +1746,32 @@ fn test_stress_extreme_scale_values() {
     for &q in &[0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0] {
         let result = sketch.quantile(q).unwrap();
 
-        assert!(result.is_finite(), "Quantile {} should be finite with extreme values", q);
-        assert!(result >= sketch.min() && result <= sketch.max(),
+        assert!(
+            result.is_finite(),
+            "Quantile {} should be finite with extreme values",
+            q
+        );
+        assert!(
+            result >= sketch.min() && result <= sketch.max(),
             "Quantile {} = {} should be within extreme bounds [{}, {}]",
-            q, result, sketch.min(), sketch.max());
+            q,
+            result,
+            sketch.min(),
+            sketch.max()
+        );
     }
 
     // Verify the sketch can handle the range
-    assert_eq!(sketch.min(), -1e15, "Should capture the minimum extreme value");
-    assert_eq!(sketch.max(), 1e15, "Should capture the maximum extreme value");
+    assert_eq!(
+        sketch.min(),
+        -1e15,
+        "Should capture the minimum extreme value"
+    );
+    assert_eq!(
+        sketch.max(),
+        1e15,
+        "Should capture the maximum extreme value"
+    );
 }
 
 #[test]
@@ -1364,7 +1781,10 @@ fn test_stress_merge_large_sketches() {
     let num_sketches = 5;
     let values_per_sketch = 20_000;
 
-    println!("Creating {} sketches with {} values each", num_sketches, values_per_sketch);
+    println!(
+        "Creating {} sketches with {} values each",
+        num_sketches, values_per_sketch
+    );
 
     let mut sketches = Vec::new();
 
@@ -1375,11 +1795,11 @@ fn test_stress_merge_large_sketches() {
         for i in 0..values_per_sketch {
             let base_value = (i as f64) + (sketch_id as f64 * 10000.0);
             let value = match sketch_id {
-                0 => base_value,                    // Linear values
-                1 => base_value * base_value,       // Quadratic values
-                2 => base_value.sqrt(),             // Square root values
-                3 => -base_value,                   // Negative values
-                4 => base_value * 0.001,            // Small values
+                0 => base_value,              // Linear values
+                1 => base_value * base_value, // Quadratic values
+                2 => base_value.sqrt(),       // Square root values
+                3 => -base_value,             // Negative values
+                4 => base_value * 0.001,      // Small values
                 _ => base_value,
             };
 
@@ -1391,8 +1811,8 @@ fn test_stress_merge_large_sketches() {
 
     // Merge all sketches into the first one
     let mut merged_sketch = sketches[0].clone();
-    for i in 1..sketches.len() {
-        merged_sketch.merge(&sketches[i]).unwrap();
+    for sketch in sketches.iter().skip(1) {
+        merged_sketch.merge(sketch).unwrap();
     }
 
     println!("Merged sketch statistics:");
@@ -1401,7 +1821,10 @@ fn test_stress_merge_large_sketches() {
     println!("  Max: {}", merged_sketch.max());
 
     // Verify merged sketch properties
-    assert_eq!(merged_sketch.count(), (num_sketches * values_per_sketch) as u64);
+    assert_eq!(
+        merged_sketch.count(),
+        (num_sketches * values_per_sketch) as u64
+    );
     assert!(merged_sketch.min().is_finite());
     assert!(merged_sketch.max().is_finite());
 
@@ -1409,9 +1832,16 @@ fn test_stress_merge_large_sketches() {
     let quantiles = [0.0, 0.25, 0.5, 0.75, 1.0];
     for &q in &quantiles {
         let result = merged_sketch.quantile(q).unwrap();
-        assert!(result.is_finite(), "Merged sketch quantile {} should be finite", q);
-        assert!(result >= merged_sketch.min() && result <= merged_sketch.max(),
-            "Merged quantile {} should be in bounds", q);
+        assert!(
+            result.is_finite(),
+            "Merged sketch quantile {} should be finite",
+            q
+        );
+        assert!(
+            result >= merged_sketch.min() && result <= merged_sketch.max(),
+            "Merged quantile {} should be in bounds",
+            q
+        );
     }
 
     println!("Merge stress test completed successfully");
@@ -1445,15 +1875,23 @@ fn test_stress_memory_usage() {
     // The key test: despite adding many diverse values, the sketch should maintain
     // bounded memory usage due to bin collapsing
     let max_expected_bins = 4096 * 2; // Allow some overhead for implementation
-    assert!(sketch.bins().len() <= max_expected_bins,
+    assert!(
+        sketch.bins().len() <= max_expected_bins,
         "Sketch should maintain bounded memory: {} bins (max expected: {})",
-        sketch.bins().len(), max_expected_bins);
+        sketch.bins().len(),
+        max_expected_bins
+    );
 
     // Verify it still works correctly
     let median = sketch.quantile(0.5).unwrap();
     assert!(median.is_finite(), "Median should still be computable");
-    assert!(median >= sketch.min() && median <= sketch.max(),
-        "Median should be in bounds despite memory constraints");
+    assert!(
+        median >= sketch.min() && median <= sketch.max(),
+        "Median should be in bounds despite memory constraints"
+    );
 
-    println!("Memory usage test passed with {} bins used", sketch.bins().len());
+    println!(
+        "Memory usage test passed with {} bins used",
+        sketch.bins().len()
+    );
 }
