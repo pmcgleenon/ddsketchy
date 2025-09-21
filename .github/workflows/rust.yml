@@ -91,7 +91,6 @@ jobs:
         cargo run --example readme_example
         cargo run --example compare_serialization --features serde
         cargo run --example readme_serde_example --features serde
-        cargo run --example debug_serde --features serde
 
   # Security audit
   security:
