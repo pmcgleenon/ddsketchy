@@ -1,4 +1,4 @@
-![DDSketchy Logo](assets/sketchy.jpg)
+![DDSketchy Logo](https://raw.githubusercontent.com/pmcgleenon/ddsketchy/main/assets/sketchy.jpg)
 
 # ddsketchy
 
