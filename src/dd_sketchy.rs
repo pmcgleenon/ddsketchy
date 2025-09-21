@@ -193,7 +193,13 @@ impl DDSketch {
         let new_min_key = new_min_key.min(self.min_key);
         let new_max_key = new_max_key.max(self.max_key);
 
-        let required_size = (new_max_key - new_min_key + 1) as usize;
+        let range_size = new_max_key.saturating_sub(new_min_key).saturating_add(1);
+        if range_size < 0 || range_size > i64::MAX / 2 {
+            // Range too large, force collapsing
+            self.adjust(new_min_key, new_max_key);
+            return;
+        }
+        let required_size = range_size as usize;
         if required_size <= self.max_bins {
             // No collapsing needed, just grow the bins
             if new_min_key < self.min_key {
@@ -217,7 +223,8 @@ impl DDSketch {
     /// Adjust bins to fit within max_bins, collapsing lowest bins if necessary
     /// Based on Go reference CollapsingLowestDenseStore.adjust()
     fn adjust(&mut self, new_min_key: i64, new_max_key: i64) {
-        if new_max_key - new_min_key + 1 > self.max_bins as i64 {
+        let range_size = new_max_key.saturating_sub(new_min_key).saturating_add(1);
+        if range_size > self.max_bins as i64 {
             // Need to collapse - keep highest keys (newest values)
             let adjusted_min_key = new_max_key - (self.max_bins as i64) + 1;
 
@@ -271,7 +278,8 @@ impl DDSketch {
 
     /// Center the bins in the array for the new range
     fn center_bins(&mut self, new_min_key: i64, new_max_key: i64) {
-        let required_size = (new_max_key - new_min_key + 1) as usize;
+        let range_size = new_max_key.saturating_sub(new_min_key).saturating_add(1);
+        let required_size = range_size.min(self.max_bins as i64) as usize;
         let mut new_bins = vec![0; required_size];
 
         // Copy existing bins to new array
@@ -291,17 +299,17 @@ impl DDSketch {
     /// Add a value to the sketch
     #[inline]
     pub fn add(&mut self, value: f64) {
-        // Fast path for common case: assume finite values
-        // Only check finite for edge cases
+        // Skip infinite/NaN values immediately
+        if !value.is_finite() {
+            return;
+        }
+
         let abs_val = value.abs();
 
         if abs_val <= self.key_epsilon {
-            if !value.is_finite() {
-                return; // Skip infinite/NaN values
-            }
             self.zero_count += 1;
         } else {
-            // For non-zero values, assume finite (common case)
+            // For non-zero finite values
             // Calculate key using pre-computed abs_val and offset
             let log_gamma = abs_val.ln() * self.inv_ln_gamma + self.offset as f64;
             let abs_key = if log_gamma >= 0.0 {
@@ -320,7 +328,15 @@ impl DDSketch {
             };
 
             self.ensure_capacity(key);
-            let idx = (key - self.min_key) as usize;
+
+            // Safely calculate index with bounds checking
+            let key_offset = key - self.min_key;
+            if key_offset < 0 || key_offset >= self.bins.len() as i64 {
+                // Value outside current bin range after collapsing - this can happen
+                // with extreme values when collapsing is active
+                return;
+            }
+            let idx = key_offset as usize;
             self.bins[idx] += 1;
         }
 
