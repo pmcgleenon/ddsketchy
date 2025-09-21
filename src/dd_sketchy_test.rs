@@ -57,7 +57,7 @@ impl Dataset {
     }
 
     fn lower_quantile(&mut self, q: f64) -> f64 {
-        if q < 0.0 || q > 1.0 || self.values.is_empty() {
+        if !(0.0..=1.0).contains(&q) || self.values.is_empty() {
             return f64::NAN;
         }
         self.sort();
@@ -66,7 +66,7 @@ impl Dataset {
     }
 
     fn upper_quantile(&mut self, q: f64) -> f64 {
-        if q < 0.0 || q > 1.0 || self.values.is_empty() {
+        if !(0.0..=1.0).contains(&q) || self.values.is_empty() {
             return f64::NAN;
         }
         self.sort();
@@ -870,7 +870,7 @@ fn test_new_api_features() {
     assert!((sketch3.alpha() - 0.01).abs() < 1e-10);
 
     // Test FromIterator trait
-    let values = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+    let values = [1.0, 2.0, 3.0, 4.0, 5.0];
     let sketch4: DDSketch = values.iter().copied().collect();
     assert_eq!(sketch4.len(), 5);
     assert!((sketch4.mean() - 3.0).abs() < 0.1);

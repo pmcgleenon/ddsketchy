@@ -29,15 +29,50 @@ fn main() -> Result<(), DDSketchError> {
 
     // Get the 50th percentile (median)
     let median = sketch.quantile(0.5)?;
-    println!("Median: {}", median);  
+    println!("Median: {}", median);
 
     // Get the 90th percentile
     let p90 = sketch.quantile(0.9)?;
-    println!("90th percentile: {}", p90); 
+    println!("90th percentile: {}", p90);
 
     Ok(())
 }
 ```
+
+## Serialization Support
+
+dd-sketchy supports optional serialization via [serde](https://serde.rs/). **Serialization is disabled by default** to keep the library dependency-free. To enable it, add the `serde` feature:
+
+```toml
+[dependencies]
+dd-sketchy = { version = "0.1", features = ["serde"] }
+serde_json = "1.0"  # or other serde formats
+```
+
+```rust
+use dd_sketchy::DDSketch;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut sketch = DDSketch::new(0.01)?;
+    sketch.add(1.0);
+    sketch.add(2.0);
+
+    // Serialize to JSON
+    let json = serde_json::to_string(&sketch)?;
+    println!("Serialized: {}", json);
+
+    // Deserialize from JSON
+    let restored: DDSketch = serde_json::from_str(&json)?;
+
+    // Verify the sketch works correctly
+    assert_eq!(sketch.count(), restored.count());
+    assert_eq!(sketch.quantile(0.5)?, restored.quantile(0.5)?);
+
+    Ok(())
+}
+```
+
+The serialization handles all internal state including infinity values for min/max bounds in empty sketches. Empty sketches serialize min/max as `null` values, while sketches with data serialize them as numbers.
 
 ## References
 

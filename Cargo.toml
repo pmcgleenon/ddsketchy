@@ -16,7 +16,10 @@ name = "ddsketch_bench"
 harness = false
 
 [dependencies]
-# No runtime dependencies - core DDSketch is dependency-free
+# Optional serialization support
+serde = { version = "1.0", optional = true, features = ["derive"] }
+
+# No other runtime dependencies - core DDSketch is dependency-free
 
 [dev-dependencies]
 rand = "0.9"
@@ -25,7 +28,14 @@ criterion = "0.6"
 approx = "0.5"
 # existing Go-port implementation for comparison
 sketches-ddsketch = "0.3"
+# For serialization testing
+serde_json = "1.0"
+
+[features]
+default = []
+# Enable serialization support with serde
+serde = ["dep:serde"]
 
 [profile.release]
 #debug = true
-#opt-level = 0       
+#opt-level = 0

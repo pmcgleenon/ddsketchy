@@ -27,11 +27,57 @@ impl std::fmt::Display for DDSketchError {
 
 impl std::error::Error for DDSketchError {}
 
+#[cfg(feature = "serde")]
+fn serialize_f64_option<S>(value: &f64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    if value.is_infinite() {
+        // Serialize infinity as null for cleaner JSON
+        serializer.serialize_none()
+    } else if value.is_nan() {
+        // NaN also serializes as null
+        serializer.serialize_none()
+    } else {
+        serializer.serialize_some(value)
+    }
+}
+
+#[cfg(feature = "serde")]
+fn deserialize_min_f64<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt: Option<f64> = serde::Deserialize::deserialize(deserializer)?;
+    Ok(opt.unwrap_or(f64::INFINITY))
+}
+
+#[cfg(feature = "serde")]
+fn deserialize_max_f64<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt: Option<f64> = serde::Deserialize::deserialize(deserializer)?;
+    Ok(opt.unwrap_or(f64::NEG_INFINITY))
+}
+
+
 /// A DDSketch quantile estimator with configurable relative accuracy.
 ///
 /// DDSketch provides fast quantile estimation with bounded relative error.
 /// It's fully mergeable and designed for high-throughput data collection.
+///
+/// # Serialization
+///
+/// When the `serde` feature is enabled, `DDSketch` implements
+/// `Serialize` and `Deserialize`.
+///
+/// ```toml
+/// dd-sketchy = { features = ["serde"] }
+/// ```
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct DDSketch {
     // Hot path fields - accessed frequently, grouped for cache locality
     bins: Vec<u64>,
@@ -42,7 +88,9 @@ pub struct DDSketch {
 
     // Summary statistics
     sum: f64,
+    #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_f64_option", deserialize_with = "deserialize_min_f64"))]
     min: f64,
+    #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_f64_option", deserialize_with = "deserialize_max_f64"))]
     max: f64,
 
     // Configuration - accessed less frequently
@@ -54,6 +102,7 @@ pub struct DDSketch {
     max_bins: usize,
     is_collapsed: bool,
 }
+
 
 impl DDSketch {
     /// Create a new DDSketch with relative error `alpha` (0 < alpha < 1)
