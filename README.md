@@ -14,7 +14,7 @@ DDSketch is a fully-mergeable quantile sketch with relative-error guarantees.
 ## Usage
 
 ```rust
-use dd_sketchy::{DDSketch, DDSketchError};
+use ddsketchy::{DDSketch, DDSketchError};
 
 fn main() -> Result<(), DDSketchError> {
     // Create a new sketch with 1% relative error
@@ -45,12 +45,12 @@ dd-sketchy supports optional serialization via [serde](https://serde.rs/). **Ser
 
 ```toml
 [dependencies]
-dd-sketchy = { version = "0.1", features = ["serde"] }
+ddsketchy = { version = "0.1", features = ["serde"] }
 serde_json = "1.0"  # or other serde formats
 ```
 
 ```rust
-use dd_sketchy::DDSketch;
+use ddsketchy::DDSketch;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sketch = DDSketch::new(0.01)?;

@@ -1,4 +1,4 @@
-use crate::dd_sketchy::{DDSketch, DDSketchError};
+use crate::ddsketchy::{DDSketch, DDSketchError};
 use approx::assert_relative_eq;
 use rand_distr::{Distribution, Exp, Normal};
 
