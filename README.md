@@ -1,11 +1,11 @@
 ![DDSketchy Logo](assets/sketchy.jpg)
 
-# dd-sketchy
+# ddsketchy
 
 This is a Rust implementation of the [DDSketch](https://arxiv.org/pdf/1908.10693.pdf) quantile sketch algorithm. 
 DDSketch is a fully-mergeable quantile sketch with relative-error guarantees.
 
-# dd-sketchy Features
+# ddsketchy Features
 
 * Implements the DDSketch algorithm with configurable relative error guarantees
 * Optimized for high-throughput data collection scenarios
@@ -41,7 +41,7 @@ fn main() -> Result<(), DDSketchError> {
 
 ## Serialization Support
 
-dd-sketchy supports optional serialization via [serde](https://serde.rs/). **Serialization is disabled by default** to keep the library dependency-free. To enable it, add the `serde` feature:
+ddsketchy supports optional serialization via [serde](https://serde.rs/). **Serialization is disabled by default** to keep the library dependency-free. To enable it, add the `serde` feature:
 
 ```toml
 [dependencies]
