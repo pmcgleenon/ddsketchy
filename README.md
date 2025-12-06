@@ -41,13 +41,7 @@ fn main() -> Result<(), DDSketchError> {
 
 ## Serialization Support
 
-ddsketchy supports optional serialization via [serde](https://serde.rs/). **Serialization is disabled by default** to keep the library dependency-free. To enable it, add the `serde` feature:
-
-```toml
-[dependencies]
-ddsketchy = { version = "0.1", features = ["serde"] }
-serde_json = "1.0"  # or other serde formats
-```
+ddsketchy supports optional serialization via [serde](https://serde.rs/). **Serialization is disabled by default** to keep the library dependency-free. To enable it, add the `serde` feature
 
 ```rust
 use ddsketchy::DDSketch;
@@ -74,10 +68,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 The serialization handles all internal state including infinity values for min/max bounds in empty sketches. Empty sketches serialize min/max as `null` values, while sketches with data serialize them as numbers.
 
-## Minimum Supported Rust Version (MSRV)
-
-This crate supports Rust 1.81.0 and later. We follow a rolling MSRV policy of approximately 1 year behind the latest stable release. MSRV increases may occur in minor releases and will be noted in the changelog.
-
 ## References
 
 * [DDSketch: A Fast and Fully-Mergeable Quantile Sketch with Relative-Error Guarantees](https://arxiv.org/pdf/1908.10693.pdf) - The original paper describing the DDSketch algorithm
@@ -86,3 +76,5 @@ This crate supports Rust 1.81.0 and later. We follow a rolling MSRV policy of ap
 
 * https://github.com/cecton/opentelemetry-rust/blob/a0899d9ed595343e9d4eb2dbd994235dedb501ed/opentelemetry/src/sdk/metrics/aggregators/ddsketch.rs#L778-L796
 * https://github.com/mheffner/rust-sketches-ddsketch
+* https://github.com/DataDog/sketches-go
+* https://github.com/DataDog/sketches-java

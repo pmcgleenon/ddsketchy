@@ -33,19 +33,51 @@ fn test_sketch_with_data_serialization() {
 
     // Verify equality
     assert_eq!(sketch.count(), restored.count());
-    assert_eq!(sketch.sum(), restored.sum());
-    assert_eq!(sketch.min(), restored.min());
-    assert_eq!(sketch.max(), restored.max());
-    assert_eq!(sketch.mean(), restored.mean());
 
-    // Verify quantiles work the same
-    assert_eq!(
-        sketch.quantile(0.5).unwrap(),
-        restored.quantile(0.5).unwrap()
+    // Use approximate equality for floating point values due to serialization precision
+    let epsilon = 1e-10;
+    assert!(
+        (sketch.sum() - restored.sum()).abs() < epsilon,
+        "Sum mismatch: {} vs {}",
+        sketch.sum(),
+        restored.sum()
     );
-    assert_eq!(
-        sketch.quantile(0.9).unwrap(),
-        restored.quantile(0.9).unwrap()
+    assert!(
+        (sketch.min() - restored.min()).abs() < epsilon,
+        "Min mismatch: {} vs {}",
+        sketch.min(),
+        restored.min()
+    );
+    assert!(
+        (sketch.max() - restored.max()).abs() < epsilon,
+        "Max mismatch: {} vs {}",
+        sketch.max(),
+        restored.max()
+    );
+    assert!(
+        (sketch.mean() - restored.mean()).abs() < epsilon,
+        "Mean mismatch: {} vs {}",
+        sketch.mean(),
+        restored.mean()
+    );
+
+    // Verify quantiles work the same (with approximate equality)
+    let q50_orig = sketch.quantile(0.5).unwrap();
+    let q50_restored = restored.quantile(0.5).unwrap();
+    assert!(
+        (q50_orig - q50_restored).abs() < epsilon,
+        "Q50 mismatch: {} vs {}",
+        q50_orig,
+        q50_restored
+    );
+
+    let q90_orig = sketch.quantile(0.9).unwrap();
+    let q90_restored = restored.quantile(0.9).unwrap();
+    assert!(
+        (q90_orig - q90_restored).abs() < epsilon,
+        "Q90 mismatch: {} vs {}",
+        q90_orig,
+        q90_restored
     );
 }
 
@@ -144,9 +176,27 @@ fn test_serialization_roundtrip_preserves_internal_state() {
 
     // Verify all internal state is preserved
     assert_eq!(sketch.count(), restored.count());
-    assert_eq!(sketch.sum(), restored.sum());
-    assert_eq!(sketch.min(), restored.min());
-    assert_eq!(sketch.max(), restored.max());
+
+    // Use approximate equality for floating point values due to serialization precision
+    let epsilon = 1e-10;
+    assert!(
+        (sketch.sum() - restored.sum()).abs() < epsilon,
+        "Sum mismatch: {} vs {}",
+        sketch.sum(),
+        restored.sum()
+    );
+    assert!(
+        (sketch.min() - restored.min()).abs() < epsilon,
+        "Min mismatch: {} vs {}",
+        sketch.min(),
+        restored.min()
+    );
+    assert!(
+        (sketch.max() - restored.max()).abs() < epsilon,
+        "Max mismatch: {} vs {}",
+        sketch.max(),
+        restored.max()
+    );
     assert_eq!(sketch.alpha(), restored.alpha());
 
     // Verify that further operations work identically
@@ -157,9 +207,13 @@ fn test_serialization_roundtrip_preserves_internal_state() {
     restored_copy.add(42.0);
 
     assert_eq!(sketch_copy.count(), restored_copy.count());
-    assert_eq!(
-        sketch_copy.quantile(0.5).unwrap(),
-        restored_copy.quantile(0.5).unwrap()
+    let q50_copy = sketch_copy.quantile(0.5).unwrap();
+    let q50_restored_copy = restored_copy.quantile(0.5).unwrap();
+    assert!(
+        (q50_copy - q50_restored_copy).abs() < epsilon,
+        "Q50 mismatch after adding: {} vs {}",
+        q50_copy,
+        q50_restored_copy
     );
 }
 

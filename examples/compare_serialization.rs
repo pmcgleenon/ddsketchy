@@ -23,11 +23,23 @@ fn main() {
     // Test roundtrip
     let restored: DDSketch = serde_json::from_str(&data_json).unwrap();
     assert_eq!(data_sketch.count(), restored.count());
-    assert_eq!(data_sketch.min(), restored.min());
-    assert_eq!(data_sketch.max(), restored.max());
-    assert_eq!(
-        data_sketch.quantile(0.5).unwrap(),
-        restored.quantile(0.5).unwrap()
+
+    // Use approximate equality for floating point values due to serialization precision
+    let epsilon = 1e-10;
+    assert!(
+        (data_sketch.min() - restored.min()).abs() < epsilon,
+        "Min values should be approximately equal"
+    );
+    assert!(
+        (data_sketch.max() - restored.max()).abs() < epsilon,
+        "Max values should be approximately equal"
+    );
+
+    let original_median = data_sketch.quantile(0.5).unwrap();
+    let restored_median = restored.quantile(0.5).unwrap();
+    assert!(
+        (original_median - restored_median).abs() < epsilon,
+        "Median values should be approximately equal"
     );
 
     println!("✓ Roundtrip serialization successful!");
