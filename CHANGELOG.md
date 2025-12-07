@@ -13,4 +13,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - added dual store and expanded tests to validate results against datadog reference implementation
 - *(deps)* update criterion requirement from 0.6 to 0.7
-- release v0.1.1
+
