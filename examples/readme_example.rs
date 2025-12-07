@@ -13,11 +13,11 @@ fn main() -> Result<(), DDSketchError> {
 
     // Get the 50th percentile (median)
     let median = sketch.quantile(0.5)?;
-    println!("Median: {}", median); // Will print approximately 3.0
+    println!("Median: {}", median); // Will print approximately 2.97
 
     // Get the 90th percentile
     let p90 = sketch.quantile(0.9)?;
-    println!("90th percentile: {}", p90); // Will print approximately 4.6
+    println!("90th percentile: {}", p90); // Will print approximately 4.01
 
     Ok(())
 }

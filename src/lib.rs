@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 mod ddsketchy;
+mod mapping;
+mod store;
 
 #[cfg(test)]
 mod ddsketchy_test;
