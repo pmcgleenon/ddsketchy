@@ -1,13 +1,13 @@
 /// Shared DDSketch key/value mapping functions
 /// Map a value to its corresponding DDSketch key
-/// Uses the standard DDSketch formula: ceil(ln(value) / ln(gamma))
-///
+/// Uses the optimized formula: ceil(ln(value) * inv_ln_gamma)
+/// where inv_ln_gamma = 1.0 / ln(gamma)
 #[inline]
-pub fn value_to_key(value: f64, gamma_ln: f64) -> i64 {
+pub fn value_to_key(value: f64, inv_gamma_ln: f64) -> i64 {
     if value == 0.0 {
         return 0;
     }
-    let log_gamma = value.abs().ln() / gamma_ln;
+    let log_gamma = value.abs().ln() * inv_gamma_ln;
     log_gamma.ceil() as i64
 }
 
@@ -27,8 +27,8 @@ pub fn key_to_value(key: i64, gamma: f64, gamma_ln: f64) -> f64 {
 
 /// Helper function for the main DDSketch implementation that needs i32 keys
 #[inline]
-pub fn value_to_key_i32(value: f64, gamma_ln: f64) -> i32 {
-    value_to_key(value, gamma_ln) as i32
+pub fn value_to_key_i32(value: f64, inv_gamma_ln: f64) -> i32 {
+    value_to_key(value, inv_gamma_ln) as i32
 }
 
 /// Helper function for the main DDSketch implementation that needs i32 keys

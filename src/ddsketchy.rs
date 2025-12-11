@@ -152,7 +152,7 @@ impl DDSketch {
     /// Map a value to a bin key
     #[inline]
     pub fn key(&self, value: f64) -> i32 {
-        crate::mapping::value_to_key_i32(value, self.inv_ln_gamma.recip())
+        crate::mapping::value_to_key_i32(value, self.inv_ln_gamma)
     }
 
     /// Get the minimum value that can be represented by the configuration
