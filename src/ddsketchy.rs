@@ -152,7 +152,7 @@ impl DDSketch {
     /// Map a value to a bin key
     #[inline]
     pub fn key(&self, value: f64) -> i32 {
-        crate::mapping::value_to_key_i32(value, self.inv_ln_gamma.recip())
+        crate::mapping::value_to_key_i32(value, self.inv_ln_gamma)
     }
 
     /// Get the minimum value that can be represented by the configuration
@@ -357,15 +357,15 @@ impl DDSketch {
         // Remove special case handling for q=0.0 and q=1.0
         // Let them go through normal quantile calculation to get reconstructed values
 
-        let rank = q * (total_count as f64 - 1.0);
+        let rank = (q * (total_count as f64 - 1.0)) as u64;
 
         // Follow Go reference implementation quantile logic exactly
-        let neg_count = self.negative_store.count() as f64;
-        let zero_count = self.zero_count as f64;
+        let neg_count = self.negative_store.count();
+        let zero_count = self.zero_count;
 
         if rank < neg_count {
             // Quantile in negative range
-            let reversed_rank = neg_count - 1.0 - rank;
+            let reversed_rank = neg_count - 1 - rank;
             let key = self.negative_store.key_at_rank(reversed_rank);
             Ok(-self.value(key)) // Note: -value(key) for negatives
         } else if rank < zero_count + neg_count {
@@ -407,7 +407,7 @@ impl DDSketch {
     }
 
     /// Debug method to get key at rank from positive store
-    pub fn positive_key_at_rank(&self, rank: f64) -> i32 {
+    pub fn positive_key_at_rank(&self, rank: u64) -> i32 {
         self.positive_store.key_at_rank(rank)
     }
 

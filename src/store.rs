@@ -154,13 +154,10 @@ impl Store {
         self.shift_bins(shift)
     }
 
-    pub fn key_at_rank(&self, rank: f64) -> i32 {
-        if rank < 0.0 {
-            return self.min_key;
-        }
-        let mut n = 0.0;
+    pub fn key_at_rank(&self, rank: u64) -> i32 {
+        let mut n = 0u64;
         for (i, bin) in self.bins.iter().enumerate() {
-            n += *bin as f64;
+            n += *bin;
             if n > rank {
                 return i as i32 + self.offset;
             }
@@ -239,8 +236,8 @@ mod tests {
 
         assert_eq!(s.count(), 100);
         assert!(!s.is_empty());
-        assert_eq!(s.key_at_rank(0.0), 0);
-        assert_eq!(s.key_at_rank(99.0), 99);
+        assert_eq!(s.key_at_rank(0), 0);
+        assert_eq!(s.key_at_rank(99), 99);
     }
 
     #[test]
@@ -253,8 +250,8 @@ mod tests {
         }
 
         assert_eq!(s.count(), 100);
-        assert_eq!(s.key_at_rank(0.0), -50);
-        assert_eq!(s.key_at_rank(99.0), 49);
+        assert_eq!(s.key_at_rank(0), -50);
+        assert_eq!(s.key_at_rank(99), 49);
     }
 
     #[test]
@@ -275,7 +272,7 @@ mod tests {
         assert_eq!(s2.count(), 50); // s2 unchanged
 
         // Verify merged range
-        assert_eq!(s1.key_at_rank(0.0), 0);
-        assert_eq!(s1.key_at_rank(99.0), 99);
+        assert_eq!(s1.key_at_rank(0), 0);
+        assert_eq!(s1.key_at_rank(99), 99);
     }
 }

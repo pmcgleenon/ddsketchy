@@ -16,6 +16,10 @@ keywords = ["ddsketch", "sketch", "data-structure"]
 name = "ddsketchy_bench"
 harness = false
 
+[[bench]]
+name = "ddsketch_bench"
+harness = false
+
 [[example]]
 name = "readme_example"
 

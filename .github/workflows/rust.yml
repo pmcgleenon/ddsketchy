@@ -108,7 +108,7 @@ jobs:
     - name: Security audit
       run: cargo audit
 
-  # Benchmark validation (just check they compile and run)
+  # Benchmark validation (just check they compile)
   benchmarks:
     name: Benchmarks
     runs-on: ubuntu-latest
@@ -120,8 +120,3 @@ jobs:
 
     - name: Build benchmarks
       run: cargo bench --no-run
-
-    - name: Run benchmarks (quick validation)
-      run: |
-        timeout 30s cargo bench -- --quick || true
-        echo "Benchmark validation completed"
