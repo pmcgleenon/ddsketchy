@@ -1,6 +1,19 @@
+[![Crates.io][crates-badge]][crates-url]
+[![MIT / Apache 2.0 licensed][license-badge]][license-url]
+[![Build Status][actions-badge]][actions-url]
+
+[crates-badge]: https://img.shields.io/crates/v/ddsketchy.svg
+[crates-url]: https://crates.io/crates/ddsketchy
+[license-badge]: https://img.shields.io/crates/l/ddsketchy.svg
+[license-url]: https://github.com/pmcgleenon/ddsketchy/blob/main/LICENSE
+[actions-badge]: https://github.com/pmcgleenon/ddsketchy/actions/workflows/rust.yml/badge.svg
+[actions-url]: https://github.com/pmcgleenon/ddsketchy/actions?query=workflow%3Arust+branch%3Amain
+
 ![DDSketchy Logo](https://raw.githubusercontent.com/pmcgleenon/ddsketchy/main/assets/sketchy.jpg)
 
 # ddsketchy
+
+[📖 Docs](https://docs.rs/ddsketchy)
 
 This is a Rust implementation of the [DDSketch](https://arxiv.org/pdf/1908.10693.pdf) quantile sketch algorithm. 
 DDSketch is a fully-mergeable quantile sketch with relative-error guarantees.
