@@ -479,7 +479,7 @@ fn test_datadog_subnormal_numbers() {
     let subnormal1 = f64::MIN_POSITIVE / 2.0;
     let subnormal2 = f64::MIN_POSITIVE / 1000.0;
 
-    // These should be treated as effectively zero due to key_epsilon
+    // These should be treated as effectively zero due to min_indexable_value
     sketch.add(subnormal1);
     sketch.add(subnormal2);
 
@@ -1322,15 +1322,15 @@ fn test_round_trip_mapping_correctness() {
             // Zero should map to key 0 and back to zero (approximately)
             assert_eq!(key, 0, "Zero should map to key 0");
             assert!(
-                reconstructed.abs() <= sketch.key_epsilon(),
+                reconstructed.abs() <= sketch.min_indexable_value(),
                 "Zero reconstruction should be near zero: {} -> key {} -> {}",
                 value,
                 key,
                 reconstructed
             );
-        } else if value.abs() <= sketch.key_epsilon() {
+        } else if value.abs() <= sketch.min_indexable_value() {
             // Very small values still get proper key mapping (they don't map to key 0)
-            // The key_epsilon only affects what gets added to zero_count vs stores
+            // The min_indexable_value only affects what gets added to zero_count vs stores
             // For round-trip mapping, they should still map to reasonable keys
             assert!(
                 reconstructed.is_finite(),
@@ -1375,7 +1375,7 @@ fn test_mapping_monotonicity() {
         let v2 = positive_values[i];
 
         // Skip values very close to epsilon threshold which may not follow strict monotonicity
-        if v1 <= sketch.key_epsilon() * 2.0 || v2 <= sketch.key_epsilon() * 2.0 {
+        if v1 <= sketch.min_indexable_value() * 2.0 || v2 <= sketch.min_indexable_value() * 2.0 {
             continue;
         }
 
@@ -1541,7 +1541,7 @@ fn test_extreme_value_mapping_stability() {
         );
 
         // Very small values get proper negative keys, they don't map to key 0
-        // The key_epsilon only affects what gets added to zero_count vs stores in add()
+        // The min_indexable_value only affects what gets added to zero_count vs stores in add()
         // Key mapping always uses the logarithmic formula for non-zero values
     }
 }
@@ -1562,7 +1562,7 @@ fn test_zero_and_near_zero_mapping() {
         1e-15,
         1e-12,
         1e-9,
-        sketch.key_epsilon() * 0.5, // This should still get a proper key
+        sketch.min_indexable_value() * 0.5, // This should still get a proper key
         f64::MIN_POSITIVE,
     ];
 
@@ -1591,11 +1591,11 @@ fn test_zero_and_near_zero_mapping() {
         );
     }
 
-    // Values just above key_epsilon should map to non-zero keys
+    // Values just above min_indexable_value should map to non-zero keys
     let small_values = vec![
-        sketch.key_epsilon() * 1.1,
-        sketch.key_epsilon() * 2.0,
-        sketch.key_epsilon() * 10.0,
+        sketch.min_indexable_value() * 1.1,
+        sketch.min_indexable_value() * 2.0,
+        sketch.min_indexable_value() * 10.0,
     ];
 
     for &value in &small_values {

@@ -87,7 +87,7 @@ pub struct DDSketch {
     gamma: f64,
     inv_ln_gamma: f64,
     offset: i32, // Changed to i32 like reference
-    key_epsilon: f64,
+    min_indexable_value: f64,
 
     // Dual stores - for positive and negative values
     positive_store: Store,
@@ -127,18 +127,22 @@ impl DDSketch {
         // Use the correct DDSketch formulation from the reference implementation
         let gamma = 1.0 + (2.0 * alpha) / (1.0 - alpha);
         let gamma_ln = ((2.0 * alpha) / (1.0 - alpha)).ln_1p();
+        let inv_ln_gamma = 1.0 / gamma_ln;
 
-        let min_value = 1e-9_f64;
         let offset = 0i32; // DataDog uses indexOffset = 0 by default
+
+        let min_indexable_from_range = ((i32::MIN - offset) as f64 / inv_ln_gamma + 1.0).exp();
+        let min_indexable_from_normal = f64::MIN_POSITIVE * gamma;
+        let min_indexable_value = min_indexable_from_range.max(min_indexable_from_normal);
 
         let max_bins = 4096;
 
         Ok(Self {
             alpha,
             gamma,
-            inv_ln_gamma: 1.0 / gamma_ln,
+            inv_ln_gamma,
             offset,
-            key_epsilon: min_value,
+            min_indexable_value,
             positive_store: Store::new(max_bins),
             negative_store: Store::new(max_bins),
             zero_count: 0,
@@ -155,10 +159,13 @@ impl DDSketch {
         crate::mapping::value_to_key_i32(value, self.inv_ln_gamma)
     }
 
-    /// Get the minimum value that can be represented by the configuration
+    /// Get the minimum indexable value (MinIndexableValue)
+    ///
+    /// Values below this threshold are clamped to the zero bucket.
+    /// Matches DataDog's Mapping.MinIndexableValue() behavior.
     #[inline]
     pub fn min_possible(&self) -> f64 {
-        self.key_epsilon
+        self.min_indexable_value
     }
 
     /// Map a key back to its representative value
@@ -176,9 +183,9 @@ impl DDSketch {
             return;
         }
 
-        // Follow the dual-store logic from reference implementation
-        if value == 0.0 {
-            // Only exactly zero goes to zero_count
+        // DataDog semantics: extremely small magnitudes are mapped to the zero bucket.
+        // Values below MinIndexableValue go to zero bucket.
+        if value == 0.0 || value.abs() < self.min_indexable_value {
             self.zero_count += 1;
         } else if value > 0.0 {
             // Positive value -> positive store
@@ -186,7 +193,7 @@ impl DDSketch {
             self.positive_store.add(key);
         } else {
             // Negative value -> negative store with key(-value)
-            let key = self.key(-value); // Note: key(-v) like reference
+            let key = self.key(-value);
             self.negative_store.add(key);
         }
 
@@ -260,8 +267,8 @@ impl DDSketch {
         self.zero_count
     }
     #[cfg(test)]
-    pub fn key_epsilon(&self) -> f64 {
-        self.key_epsilon
+    pub fn min_indexable_value(&self) -> f64 {
+        self.min_indexable_value
     }
 
     #[cfg(test)]
@@ -513,17 +520,25 @@ impl DDSketchBuilder {
         // Use the correct DDSketch formulation from the reference implementation
         let gamma = 1.0 + (2.0 * self.alpha) / (1.0 - self.alpha);
         let gamma_ln = ((2.0 * self.alpha) / (1.0 - self.alpha)).ln_1p();
+        let inv_ln_gamma = 1.0 / gamma_ln;
 
-        let min_value = 1e-9_f64;
         let offset = 0i32; // DataDog uses indexOffset = 0 by default
+
+        // Compute MinIndexableValue like DataDog Go implementation:
+        // max(exp((MinInt32 - offset) / multiplier + 1), minNormalFloat64 * gamma)
+        // where multiplier = inv_ln_gamma
+        let min_indexable_from_range = ((i32::MIN - offset) as f64 / inv_ln_gamma + 1.0).exp();
+        let min_indexable_from_normal = f64::MIN_POSITIVE * gamma;
+        let min_indexable_value = min_indexable_from_range.max(min_indexable_from_normal);
+
         let max_bins = self.max_bins.unwrap_or(4096);
 
         Ok(DDSketch {
             alpha: self.alpha,
             gamma,
-            inv_ln_gamma: 1.0 / gamma_ln,
+            inv_ln_gamma,
             offset,
-            key_epsilon: min_value,
+            min_indexable_value,
             positive_store: Store::new(max_bins),
             negative_store: Store::new(max_bins),
             zero_count: 0,
