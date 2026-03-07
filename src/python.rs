@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
+use pyo3::types::PyList;
 use crate::ddsketchy::{DDSketch as DDSketchInner, DDSketchError};
 
 #[pyclass]
@@ -26,8 +27,11 @@ impl DDSketch {
         self.inner.add(value);
     }
 
-    fn add_batch(&mut self, values: Vec<f64>) {
-        self.inner.add_batch(values);
+    fn add_batch(&mut self, values: &Bound<'_, PyList>) -> PyResult<()> {
+        for value in values {
+            self.inner.add(value.extract()?);
+        }
+        Ok(())
     }
 
     fn quantile(&self, q: f64) -> PyResult<f64> {
