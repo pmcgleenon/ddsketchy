@@ -60,7 +60,7 @@ python = ["dep:pyo3"]
 
 [lib]
 name = "ddsketchy"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [profile.release]
 #debug = true
