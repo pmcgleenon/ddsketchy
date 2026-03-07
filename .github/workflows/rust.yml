@@ -146,8 +146,14 @@ jobs:
     - name: Build Python wheel
       run: maturin build --features python --release
 
-    - name: Install Python wheel
+    - name: Install Python wheel (Unix)
+      if: runner.os != 'Windows'
       run: pip install target/wheels/*.whl
+
+    - name: Install Python wheel (Windows)
+      if: runner.os == 'Windows'
+      run: pip install (Get-ChildItem target/wheels/*.whl)
+      shell: pwsh
 
     - name: Run Python tests
       run: python -m pytest tests/test_python_bindings.py -v
