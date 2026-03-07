@@ -37,7 +37,7 @@ required-features = ["serde"]
 serde = { version = "1.0", optional = true, features = ["derive"] }
 
 # Optional Python bindings
-pyo3 = { version = "0.23", optional = true, features = ["extension-module"] }
+pyo3 = { version = "0.24", optional = true, features = ["extension-module"] }
 
 # No other runtime dependencies - core DDSketch is dependency-free
 

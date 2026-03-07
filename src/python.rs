@@ -1,7 +1,7 @@
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
-use pyo3::types::PyList;
 use crate::ddsketchy::{DDSketch as DDSketchInner, DDSketchError};
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use pyo3::types::PyList;
 
 #[pyclass]
 pub struct DDSketch {
