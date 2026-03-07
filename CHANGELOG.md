@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5](https://github.com/pmcgleenon/ddsketchy/compare/v0.1.4...v0.1.5) - 2026-03-07
+
+### Other
+
+- python bindings for ddsketch ([#23](https://github.com/pmcgleenon/ddsketchy/pull/23))
+
 ## [0.1.4](https://github.com/pmcgleenon/ddsketchy/compare/v0.1.3...v0.1.4) - 2026-01-03
 
 ### Fixed
