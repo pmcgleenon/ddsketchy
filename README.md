@@ -81,6 +81,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 The serialization handles all internal state including infinity values for min/max bounds in empty sketches. Empty sketches serialize min/max as `null` values, while sketches with data serialize them as numbers.
 
+## Python Bindings
+
+ddsketchy provides Python bindings via [PyO3](https://pyo3.rs/).
+
+### Building the Python wheel
+
+```bash
+pip install maturin
+maturin build --features python --release
+```
+
+### Development install
+
+```bash
+maturin develop --features python
+```
+
+### Running Python tests
+
+```bash
+python -m pytest tests/test_python_bindings.py
+```
+
+### Python usage
+
+```python
+from ddsketchy import DDSketch
+
+sketch = DDSketch(alpha=0.01)
+
+sketch.add(1.0)
+sketch.add(2.0)
+sketch.add(3.0)
+
+print(f"Median: {sketch.quantile(0.5)}")
+print(f"P99: {sketch.quantile(0.99)}")
+print(f"Count: {sketch.count}, Sum: {sketch.sum}, Mean: {sketch.mean}")
+```
+
 ## References
 
 * [DDSketch: A Fast and Fully-Mergeable Quantile Sketch with Relative-Error Guarantees](https://arxiv.org/pdf/1908.10693.pdf) - The original paper describing the DDSketch algorithm

@@ -36,6 +36,9 @@ required-features = ["serde"]
 # Optional serialization support
 serde = { version = "1.0", optional = true, features = ["derive"] }
 
+# Optional Python bindings
+pyo3 = { version = "0.23", optional = true, features = ["extension-module"] }
+
 # No other runtime dependencies - core DDSketch is dependency-free
 
 [dev-dependencies]
@@ -52,6 +55,12 @@ serde_json = "1.0"
 default = []
 # Enable serialization support with serde
 serde = ["dep:serde"]
+# Enable Python bindings
+python = ["dep:pyo3"]
+
+[lib]
+name = "ddsketchy"
+crate-type = ["cdylib"]
 
 [profile.release]
 #debug = true

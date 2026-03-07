@@ -4,6 +4,9 @@ mod ddsketchy;
 mod mapping;
 mod store;
 
+#[cfg(feature = "python")]
+mod python;
+
 #[cfg(test)]
 mod ddsketchy_test;
 
