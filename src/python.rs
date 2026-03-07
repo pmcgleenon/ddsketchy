@@ -1,7 +1,6 @@
 use crate::ddsketchy::{DDSketch as DDSketchInner, DDSketchError};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyList;
 
 #[pyclass]
 pub struct DDSketch {
@@ -27,11 +26,8 @@ impl DDSketch {
         self.inner.add(value);
     }
 
-    fn add_batch(&mut self, values: &Bound<'_, PyList>) -> PyResult<()> {
-        for value in values {
-            self.inner.add(value.extract()?);
-        }
-        Ok(())
+    fn add_batch(&mut self, values: Vec<f64>) {
+        self.inner.add_batch(values);
     }
 
     fn quantile(&self, q: f64) -> PyResult<f64> {
@@ -97,8 +93,8 @@ impl DDSketch {
     }
 }
 
-#[pymodule(name = "ddsketchy")]
-fn init(m: &Bound<'_, PyModule>) -> PyResult<()> {
+#[pymodule]
+fn ddsketchy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DDSketch>()?;
     Ok(())
 }
