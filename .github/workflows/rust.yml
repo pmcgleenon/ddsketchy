@@ -143,8 +143,11 @@ jobs:
     - name: Install maturin and pytest
       run: pip install maturin pytest
 
-    - name: Build and install Python wheel
-      run: maturin develop --features python
+    - name: Build Python wheel
+      run: maturin build --features python --release
+
+    - name: Install Python wheel
+      run: pip install target/wheels/*.whl
 
     - name: Run Python tests
       run: python -m pytest tests/test_python_bindings.py -v
