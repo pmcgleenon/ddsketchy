@@ -512,8 +512,8 @@ impl DDSketch {
     /// }
     /// let median = sketch.quantile(0.5).unwrap();
     /// // q=0.5 returns the rank-50 value (50.0), not the continuous median (50.5),
-/// // so the relative-error bound is 50.0 * alpha.
-/// assert!((median - 50.0).abs() <= 50.0 * 0.01);
+    /// // so the relative-error bound is 50.0 * alpha.
+    /// assert!((median - 50.0).abs() <= 50.0 * 0.01);
     /// ```
     pub fn quantile(&self, q: f64) -> Result<f64, DDSketchError> {
         if !(0.0..=1.0).contains(&q) {
