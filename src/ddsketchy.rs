@@ -178,29 +178,27 @@ impl DDSketch {
     /// Add a value to the sketch
     #[inline]
     pub fn add(&mut self, value: f64) {
-        // Skip infinite/NaN values immediately
         if !value.is_finite() {
             return;
         }
 
-        // DataDog semantics: extremely small magnitudes are mapped to the zero bucket.
-        // Values below MinIndexableValue go to zero bucket.
-        if value == 0.0 || value.abs() < self.min_indexable_value {
-            self.zero_count += 1;
-        } else if value > 0.0 {
-            // Positive value -> positive store
-            let key = self.key(value);
+        if value >= self.min_indexable_value {
+            let key = (value.ln() * self.inv_ln_gamma).ceil() as i32;
             self.positive_store.add(key);
-        } else {
-            // Negative value -> negative store with key(-value)
-            let key = self.key(-value);
+        } else if value <= -self.min_indexable_value {
+            let key = ((-value).ln() * self.inv_ln_gamma).ceil() as i32;
             self.negative_store.add(key);
+        } else {
+            self.zero_count += 1;
         }
 
-        // Update metadata
         self.sum += value;
-        self.min = self.min.min(value);
-        self.max = self.max.max(value);
+        if value < self.min {
+            self.min = value;
+        }
+        if value > self.max {
+            self.max = value;
+        }
     }
 
     /// Merge another sketch into this one
@@ -347,7 +345,7 @@ impl DDSketch {
     ///
     /// Returns 0.0 if the sketch is empty for backward compatibility.
     pub fn quantile(&self, q: f64) -> Result<f64, DDSketchError> {
-        if !q.is_finite() || !(0.0..=1.0).contains(&q) {
+        if !(0.0..=1.0).contains(&q) {
             return Err(DDSketchError::InvalidQuantile);
         }
 
@@ -388,7 +386,7 @@ impl DDSketch {
 
     /// Returns the value at the given quantile, with Option for empty handling
     pub fn quantile_opt(&self, q: f64) -> Result<Option<f64>, DDSketchError> {
-        if !q.is_finite() || !(0.0..=1.0).contains(&q) {
+        if !(0.0..=1.0).contains(&q) {
             return Err(DDSketchError::InvalidQuantile);
         }
         if self.count() == 0 {
