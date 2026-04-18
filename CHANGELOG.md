@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/pmcgleenon/ddsketchy/compare/v0.1.5...v0.1.6) - 2026-04-18
+
+### Other
+
+- expand crate-level docs, doctests, and docs CI ([#28](https://github.com/pmcgleenon/ddsketchy/pull/28))
+- inline hot-path in add() and drop redundant checks ([#27](https://github.com/pmcgleenon/ddsketchy/pull/27))
+- optimize merge with slice zip and copy_within ([#25](https://github.com/pmcgleenon/ddsketchy/pull/25))
+
 ## [0.1.5](https://github.com/pmcgleenon/ddsketchy/compare/v0.1.4...v0.1.5) - 2026-03-07
 
 ### Other
