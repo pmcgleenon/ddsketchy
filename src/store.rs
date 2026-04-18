@@ -110,11 +110,8 @@ impl Store {
                     let collapsed_count: u64 = self.bins[collapse_start_index..collapse_end_index]
                         .iter()
                         .sum();
-                    let zero_len = (new_min_key - self.min_key) as usize;
-                    self.bins.splice(
-                        collapse_start_index..collapse_end_index,
-                        std::iter::repeat_n(0, zero_len),
-                    );
+                    // Same-length replacement: just fill with zeros (avoids splice iterator overhead)
+                    self.bins[collapse_start_index..collapse_end_index].fill(0);
                     self.bins[collapse_end_index] += collapsed_count;
                 }
                 self.min_key = new_min_key;
@@ -131,18 +128,24 @@ impl Store {
     }
 
     fn shift_bins(&mut self, shift: i32) {
+        let len = self.bins.len();
         if shift > 0 {
-            let shift = shift as usize;
-            self.bins.rotate_right(shift);
-            for idx in 0..shift {
-                self.bins[idx] = 0;
+            let s = shift as usize;
+            if s < len {
+                // copy_within + fill: 2 memops instead of rotate's 3
+                self.bins.copy_within(0..len - s, s);
+                self.bins[..s].fill(0);
+            } else {
+                self.bins.fill(0);
             }
         } else {
-            let shift = shift.unsigned_abs() as usize;
-            for idx in 0..shift {
-                self.bins[idx] = 0;
+            let s = shift.unsigned_abs() as usize;
+            if s < len {
+                self.bins.copy_within(s.., 0);
+                self.bins[len - s..].fill(0);
+            } else {
+                self.bins.fill(0);
             }
-            self.bins.rotate_left(shift);
         }
 
         self.offset -= shift;
@@ -196,8 +199,18 @@ impl Store {
             collapse_end_index = collapse_start_index;
         }
 
-        for key in (collapse_end_index + other.offset)..(other.max_key + 1) {
-            self.bins[(key - self.offset) as usize] += other.bins[(key - other.offset) as usize]
+        // Use slice zip instead of per-element indexing — eliminates bounds checks
+        // and lets LLVM auto-vectorize the addition loop
+        let start_key = collapse_end_index + other.offset;
+        let len = (other.max_key + 1 - start_key) as usize;
+        if len > 0 {
+            let self_start = (start_key - self.offset) as usize;
+            let other_start = (start_key - other.offset) as usize;
+            let dst = &mut self.bins[self_start..self_start + len];
+            let src = &other.bins[other_start..other_start + len];
+            for (d, s) in dst.iter_mut().zip(src.iter()) {
+                *d += *s;
+            }
         }
 
         self.count += other.count;
