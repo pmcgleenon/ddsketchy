@@ -24,7 +24,7 @@
 //!
 //! // Quantiles are accurate to within `alpha` (1%) relative error.
 //! let median = sketch.quantile(0.5).unwrap();
-//! assert!((median - 3.0).abs() < 3.0 * 0.01 + 0.05);
+//! assert!((median - 3.0).abs() <= 3.0 * 0.01);
 //! assert_eq!(sketch.count(), 5);
 //! ```
 //!

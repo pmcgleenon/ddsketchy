@@ -89,7 +89,7 @@ where
 /// }
 /// let p99 = sketch.quantile(0.99).unwrap();
 /// // Result is within 1% relative error of 99.
-/// assert!((p99 - 99.0).abs() < 99.0 * 0.01);
+/// assert!((p99 - 99.0).abs() <= 99.0 * 0.01);
 /// ```
 ///
 /// # Serialization
@@ -98,7 +98,7 @@ where
 /// `serde::Serialize` and `serde::Deserialize`:
 ///
 /// ```toml
-/// ddsketchy = { version = "*", features = ["serde"] }
+/// ddsketchy = { version = "0.1", features = ["serde"] }
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -436,7 +436,7 @@ impl DDSketch {
     /// sketch.add(1.0);
     /// sketch.add(10.0);
     /// // min is reconstructed and therefore only approximate.
-    /// assert!((sketch.min() - 1.0).abs() < 1.0 * 0.01);
+    /// assert!((sketch.min() - 1.0).abs() <= 1.0 * 0.01);
     /// ```
     #[inline]
     pub fn min(&self) -> f64 {
@@ -458,7 +458,7 @@ impl DDSketch {
     /// let mut sketch = DDSketch::new(0.01).unwrap();
     /// sketch.add(1.0);
     /// sketch.add(10.0);
-    /// assert!((sketch.max() - 10.0).abs() < 10.0 * 0.01);
+    /// assert!((sketch.max() - 10.0).abs() <= 10.0 * 0.01);
     /// ```
     #[inline]
     pub fn max(&self) -> f64 {
@@ -511,7 +511,9 @@ impl DDSketch {
     ///     sketch.add(v as f64);
     /// }
     /// let median = sketch.quantile(0.5).unwrap();
-    /// assert!((median - 50.0).abs() < 50.0 * 0.01 + 0.5);
+    /// // q=0.5 returns the rank-50 value (50.0), not the continuous median (50.5),
+/// // so the relative-error bound is 50.0 * alpha.
+/// assert!((median - 50.0).abs() <= 50.0 * 0.01);
     /// ```
     pub fn quantile(&self, q: f64) -> Result<f64, DDSketchError> {
         if !(0.0..=1.0).contains(&q) {
