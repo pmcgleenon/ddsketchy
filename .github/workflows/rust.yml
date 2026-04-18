@@ -68,6 +68,9 @@ jobs:
   docs:
     name: Documentation
     runs-on: ubuntu-latest
+    env:
+      # Fail the build on broken intra-doc links or other rustdoc warnings.
+      RUSTDOCFLAGS: "-D warnings"
 
     steps:
     - uses: actions/checkout@v4
@@ -84,7 +87,7 @@ jobs:
       run: cargo test --doc --all-features
 
     - name: Build examples
-      run: cargo build --examples --verbose
+      run: cargo build --examples --verbose --features serde
 
     - name: Run all examples
       run: |
