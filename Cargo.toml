@@ -20,6 +20,10 @@ harness = false
 name = "ddsketch_bench"
 harness = false
 
+[[bench]]
+name = "insert_compare"
+harness = false
+
 [[example]]
 name = "readme_example"
 
