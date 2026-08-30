@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8](https://github.com/pmcgleenon/ddsketchy/compare/v0.1.7...v0.1.8) - 2026-08-30
+
+### Other
+
+- *(deps)* update sketches-ddsketch requirement from 0.3 to 0.4 ([#31](https://github.com/pmcgleenon/ddsketchy/pull/31))
+
 ## [0.1.7](https://github.com/pmcgleenon/ddsketchy/compare/v0.1.6...v0.1.7) - 2026-06-12
 
 ### Other
