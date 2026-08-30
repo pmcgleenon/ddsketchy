@@ -46,7 +46,7 @@ pyo3 = { version = "0.29", optional = true, features = ["extension-module"] }
 # No other runtime dependencies - core DDSketch is dependency-free
 
 [dev-dependencies]
-rand = "0.9"
+rand = "0.10"
 rand_distr = "0.5.1"
 criterion = "0.8"
 approx = "0.5"
