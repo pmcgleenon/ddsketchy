@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8](https://github.com/pmcgleenon/ddsketchy/compare/v0.1.7...v0.1.8) - 2026-09-11
+
+### Other
+
+- Potential fix for code scanning alert no. 6: Workflow does not contain permissions ([#33](https://github.com/pmcgleenon/ddsketchy/pull/33))
+- *(deps)* update sketches-ddsketch requirement from 0.3 to 0.4 ([#31](https://github.com/pmcgleenon/ddsketchy/pull/31))
+
 ## [0.1.7](https://github.com/pmcgleenon/ddsketchy/compare/v0.1.6...v0.1.7) - 2026-06-12
 
 ### Other
