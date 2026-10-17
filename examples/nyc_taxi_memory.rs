@@ -80,7 +80,7 @@ fn main() {
                     s.add(v);
                 }
                 if let Some(s) = quantile_sketch_sketch.as_ref() {
-                    if v >= 0.5 && v <= 300_000.0 {
+                    if (0.5..=300_000.0).contains(&v) {
                         s.insert(v);
                     }
                 }

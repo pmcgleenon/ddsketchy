@@ -44,7 +44,7 @@ fn main() {
         match reader.read_exact(&mut buf) {
             Ok(()) => {
                 let v = f64::from_le_bytes(buf);
-                if !v.is_finite() || v < MIN_VALUE || v > MAX_VALUE {
+                if !v.is_finite() || !(MIN_VALUE..=MAX_VALUE).contains(&v) {
                     skipped_nonfinite += 1;
                     continue;
                 }
