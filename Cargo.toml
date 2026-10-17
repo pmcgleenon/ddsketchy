@@ -24,10 +24,6 @@ harness = false
 name = "insert_compare"
 harness = false
 
-[[bench]]
-name = "quantile_sketch_compare"
-harness = false
-
 [[example]]
 name = "readme_example"
 
