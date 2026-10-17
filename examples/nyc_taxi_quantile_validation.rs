@@ -1,26 +1,37 @@
 // Reads raw little-endian f64 values from stdin (produced by
 // scripts/extract_trip_times.py streaming NYC TLC FHVHV trip-duration data)
-// and feeds them into both ddsketchy and sketches-ddsketch (an independent
-// Datadog-algorithm port) without ever storing the values, so this scales
-// to real datasets far too large to hold in memory as a Vec. At the end,
-// reports count and max relative disagreement between the two sketches
-// across many quantile probes — real-world differential validation
-// alongside the synthetic large_scale_differential.rs tests.
+// and feeds them into ddsketchy, sketches-ddsketch (an independent
+// Datadog-algorithm port), and quantile-sketch (a lock-free DDSketch),
+// without ever storing the values, so this scales to real datasets far too
+// large to hold in memory as a Vec. At the end, reports count and max
+// relative disagreement between ddsketchy and sketches-ddsketch across many
+// quantile probes — real-world differential validation alongside the
+// synthetic large_scale_differential.rs tests. quantile-sketch's quantiles
+// are printed alongside for comparison but not included in the pass/fail
+// bound, since it's a different (lock-free, fixed-range) implementation
+// rather than another DDSketch port of the same reference.
 //
 // Usage:
 //   python3 scripts/extract_trip_times.py file1.parquet file2.parquet... \
 //     | ./target/release/examples/nyc_taxi_quantile_validation
 
 use ddsketchy::DDSketch;
+use quantile_sketch::ConcurrentDDSketch;
 use sketches_ddsketch::{Config, DDSketch as ReferenceDDSketch};
 use std::io::{self, Read};
 
 const ALPHA: f64 = 0.01;
 const PROBES: usize = 999;
+// Must bracket the full range of trip_time seconds seen across all months
+// (observed min=0.990, max=240472.982); quantile_sketch::insert panics on
+// out-of-range values, so these are set with margin rather than tightly.
+const MIN_VALUE: f64 = 0.1;
+const MAX_VALUE: f64 = 1_000_000.0;
 
 fn main() {
     let mut sketch = DDSketch::new(ALPHA).expect("valid alpha");
     let mut reference = ReferenceDDSketch::new(Config::defaults());
+    let quantile_sketch = ConcurrentDDSketch::with_err_and_range(ALPHA, MIN_VALUE, MAX_VALUE);
 
     let stdin = io::stdin();
     let mut reader = io::BufReader::with_capacity(1 << 20, stdin.lock());
@@ -32,12 +43,13 @@ fn main() {
         match reader.read_exact(&mut buf) {
             Ok(()) => {
                 let v = f64::from_le_bytes(buf);
-                if !v.is_finite() || v <= 0.0 {
+                if !v.is_finite() || v < MIN_VALUE || v > MAX_VALUE {
                     skipped_nonfinite += 1;
                     continue;
                 }
                 sketch.add(v);
                 reference.add(v);
+                quantile_sketch.insert(v);
                 count += 1;
                 if count % 100_000_000 == 0 {
                     eprintln!("...{count} values streamed so far");
@@ -48,7 +60,7 @@ fn main() {
         }
     }
 
-    eprintln!("done: count={count} skipped_nonfinite_or_nonpositive={skipped_nonfinite}");
+    eprintln!("done: count={count} skipped_nonfinite_or_out_of_range={skipped_nonfinite}");
     eprintln!(
         "ddsketchy: min={:.3} max={:.3} mean={:.3}",
         sketch.min(),
@@ -78,7 +90,8 @@ fn main() {
     for &q in &[0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999] {
         let ours = sketch.quantile(q).unwrap();
         let theirs = reference.quantile(q).unwrap().unwrap();
-        println!("q={q:.3}: ddsketchy={ours:.3}  sketches-ddsketch={theirs:.3}");
+        let qs = quantile_sketch.quantile(q).unwrap();
+        println!("q={q:.3}: ddsketchy={ours:.3}  sketches-ddsketch={theirs:.3}  quantile-sketch={qs:.3}");
     }
 
     assert!(

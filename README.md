@@ -138,26 +138,39 @@ a 100,000-value dataset:
 
 `examples/nyc_taxi_quantile_validation.rs` runs the same kind of check against
 a real dataset: NYC TLC FHVHV (Uber/Lyft) trip-duration data, streamed via
-`scripts/extract_trip_times.py`. Across 1,002,281,387 real trip durations,
-ddsketchy and sketches-ddsketch agreed exactly (0.000000 relative difference)
-at every probed quantile:
+`scripts/extract_trip_times.py`. `examples/go_reference` runs the identical
+stream through Datadog's own Go reference implementation
+([`sketches-go`](https://github.com/DataDog/sketches-go)) for a fourth,
+independently-implemented data point. Across 1,002,281,387 real trip
+durations, all three DDSketch ports of the same reference algorithm --
+ddsketchy, sketches-ddsketch, and sketches-go -- agreed **exactly** at every
+probed quantile; `quantile-sketch` (a different design, with its own cubic
+approximation) stays close but shows its expected small deviation:
 
 ```
 $ python3 scripts/extract_trip_times.py <parquet files...> \
-    | ./target/release/examples/nyc_taxi_quantile_validation
-count=1002281387 max_rel_diff_vs_sketches_ddsketch=0.000000 (bound=2*alpha=0.020)
-q=0.500: ddsketchy=944.049  sketches-ddsketch=944.049
-q=0.900: ddsketchy=2186.826  sketches-ddsketch=2186.826
-q=0.990: ddsketchy=4065.236  sketches-ddsketch=4065.236
+    | tee >(./target/release/examples/nyc_taxi_quantile_validation) \
+    | (cd examples/go_reference && go run .)
+count=1002281387 max_rel_diff_vs_sketches_ddsketch=0.000000 (at q=0.999, bound=2*alpha=0.020)
+q=0.100: ddsketchy=391.564  sketches-ddsketch=391.564  quantile-sketch=391.798  sketches-go=391.564
+q=0.500: ddsketchy=944.049  sketches-ddsketch=944.049  quantile-sketch=937.867  sketches-go=944.049
+q=0.900: ddsketchy=2186.826  sketches-ddsketch=2186.826  quantile-sketch=2153.193  sketches-go=2186.826
+q=0.990: ddsketchy=4065.236  sketches-ddsketch=4065.236  quantile-sketch=4058.880  sketches-go=4065.236
 ```
 
 ## References
 
 * [DDSketch: A Fast and Fully-Mergeable Quantile Sketch with Relative-Error Guarantees](https://arxiv.org/pdf/1908.10693.pdf) - The original paper describing the DDSketch algorithm
 
-## Other implementations
+### Known implementations
 
-* https://github.com/cecton/opentelemetry-rust/blob/a0899d9ed595343e9d4eb2dbd994235dedb501ed/opentelemetry/src/sdk/metrics/aggregators/ddsketch.rs#L778-L796
-* https://github.com/mheffner/rust-sketches-ddsketch
-* https://github.com/DataDog/sketches-go
-* https://github.com/DataDog/sketches-java
+| Implementation | Language | Concurrency | License | Notes |
+|---|---|---|---|---|
+| [ddsketchy](https://github.com/pmcgleenon/ddsketchy) (this crate) | Rust | single-threaded | Apache-2.0 OR MIT | Default `Logarithmic` mapping is bit-exact with `sketches-go`; opt-in `Cubic` mapping and a two-pointer quantile scan trade a little precision/direction-guessing for speed (see [Performance](#performance)) |
+| [sketches-go](https://github.com/DataDog/sketches-go) | Go | single-threaded | Apache-2.0 | The original reference implementation |
+| [libdd-ddsketch](https://crates.io/crates/libdd-ddsketch) | Rust | single-threaded | Apache-2.0 | Datadog's own official Rust port, published as part of [libdatadog](https://github.com/DataDog/libdatadog/tree/main/libdd-ddsketch) |
+| [sketches-java](https://github.com/DataDog/sketches-java) | Java | single-threaded | Apache-2.0 | |
+| [sketches-py](https://github.com/DataDog/sketches-py) | Python | single-threaded | custom (see repo) | |
+| [sketches-ddsketch](https://github.com/mheffner/rust-sketches-ddsketch) | Rust | single-threaded | Apache-2.0 | Direct Rust port of `sketches-go`; used throughout this crate's benchmarks as the Rust reference |
+| [quantile-sketch](https://github.com/tomtomwombat/quantile-sketch) | Rust | lock-free (atomics) | Apache-2.0 | Fixed value range chosen at construction (`insert` panics out-of-range); also benchmarked throughout this crate's README |
+| [opentelemetry-rust ddsketch aggregator](https://github.com/cecton/opentelemetry-rust/blob/a0899d9ed595343e9d4eb2dbd994235dedb501ed/opentelemetry/src/sdk/metrics/aggregators/ddsketch.rs#L778-L796) | Rust | single-threaded | Apache-2.0 | Embedded aggregator inside an OpenTelemetry fork, not a standalone crate |
