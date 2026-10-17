@@ -1,4 +1,4 @@
-use crate::ddsketchy::{DDSketch, DDSketchError};
+use crate::ddsketchy::{DDSketch, DDSketchError, IndexMapping};
 use approx::assert_relative_eq;
 use rand_distr::{Distribution, Exp, Normal};
 
@@ -657,4 +657,148 @@ fn test_error_trait_implementation() {
     let error2 = DDSketchError::InvalidAlpha;
     assert_eq!(error, error2);
     println!("Error debug: {:?}", error);
+}
+
+#[test]
+fn test_default_mapping_is_logarithmic() {
+    assert_eq!(
+        DDSketch::new(0.01).unwrap().mapping(),
+        IndexMapping::Logarithmic
+    );
+    assert_eq!(DDSketch::default().mapping(), IndexMapping::Logarithmic);
+    assert_eq!(
+        DDSketch::builder(0.01).build().unwrap().mapping(),
+        IndexMapping::Logarithmic
+    );
+}
+
+#[test]
+fn test_cubic_mapping_opt_in() {
+    let sketch = DDSketch::builder(0.01)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    assert_eq!(sketch.mapping(), IndexMapping::Cubic);
+}
+
+#[test]
+fn test_cubic_mapping_diverges_from_logarithmic() {
+    // Sanity check that the enum actually changes behavior — a regression
+    // here would mean `IndexMapping::Cubic` silently fell back to the exact
+    // path, making the whole feature a no-op.
+    let values = [1.0, 2.0, 3.0, 4.0, 5.0, 17.3, 1000.0];
+
+    let mut log_sketch = DDSketch::new(RELATIVE_ERROR).unwrap();
+    let mut cubic_sketch = DDSketch::builder(RELATIVE_ERROR)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    for &v in &values {
+        log_sketch.add(v);
+        cubic_sketch.add(v);
+    }
+
+    let log_median = log_sketch.quantile(0.5).unwrap();
+    let cubic_median = cubic_sketch.quantile(0.5).unwrap();
+    assert_ne!(
+        log_median, cubic_median,
+        "Cubic and Logarithmic mappings should not produce bit-identical output"
+    );
+}
+
+#[test]
+fn test_cubic_mapping_within_alpha_across_distributions() {
+    // Interior quantiles only: q=0.0/q=1.0 reconstruct from the edge bucket
+    // rather than the tracked exact min/max and are known-approximate for
+    // both mappings (see `DDSketch::min`'s doc comment) — the existing
+    // `test_normal_distribution_statistical` / `test_exponential_distribution_statistical`
+    // above likewise only check interior quantiles, never the extremes.
+    let interior_quantiles: Vec<f64> = TEST_QUANTILES
+        .iter()
+        .copied()
+        .filter(|&q| q > 0.0 && q < 1.0)
+        .collect();
+
+    for alpha in [0.001, 0.01, 0.05] {
+        let normal_data = normal_dataset(100.0, 15.0, 2000);
+        let mut sketch = DDSketch::builder(alpha)
+            .mapping(IndexMapping::Cubic)
+            .build()
+            .unwrap();
+        for &v in &normal_data {
+            sketch.add(v);
+        }
+        for &q in &interior_quantiles {
+            let rank = (q * (normal_data.len() as f64 - 1.0)) as usize;
+            let expected = normal_data[rank];
+            let approx = sketch.quantile(q).unwrap();
+            assert_within_relative_error(approx, expected, alpha);
+        }
+
+        let exp_data = exponential_dataset(2.0, 2000);
+        let mut sketch = DDSketch::builder(alpha)
+            .mapping(IndexMapping::Cubic)
+            .build()
+            .unwrap();
+        for &v in &exp_data {
+            sketch.add(v);
+        }
+        for &q in &interior_quantiles {
+            let rank = (q * (exp_data.len() as f64 - 1.0)) as usize;
+            let expected = exp_data[rank];
+            let approx = sketch.quantile(q).unwrap();
+            assert_within_relative_error(approx, expected, alpha);
+        }
+    }
+}
+
+#[test]
+fn test_cubic_mapping_negative_and_zero_values() {
+    let mut sketch = DDSketch::builder(0.01)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    for v in [-100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0] {
+        sketch.add(v);
+    }
+    assert_eq!(sketch.count(), 7);
+    assert_within_relative_error(sketch.quantile(0.0).unwrap(), -100.0, 0.01);
+    assert_within_relative_error(sketch.quantile(1.0).unwrap(), 100.0, 0.01);
+    for &q in &TEST_QUANTILES {
+        assert!(sketch.quantile(q).unwrap().is_finite());
+    }
+}
+
+#[test]
+fn test_cubic_mapping_merge_rejects_mismatched_mapping() {
+    let mut log_sketch = DDSketch::new(0.01).unwrap();
+    log_sketch.add(1.0);
+
+    let mut cubic_sketch = DDSketch::builder(0.01)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    cubic_sketch.add(2.0);
+
+    assert_eq!(
+        log_sketch.merge(&cubic_sketch).unwrap_err(),
+        DDSketchError::AlphaMismatch
+    );
+}
+
+#[test]
+fn test_cubic_mapping_merge_succeeds_same_mapping() {
+    let mut a = DDSketch::builder(0.01)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    a.add(1.0);
+    let mut b = DDSketch::builder(0.01)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    b.add(2.0);
+
+    a.merge(&b).unwrap();
+    assert_eq!(a.count(), 2);
 }
