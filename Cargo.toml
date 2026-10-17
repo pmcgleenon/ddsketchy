@@ -24,6 +24,10 @@ harness = false
 name = "insert_compare"
 harness = false
 
+[[bench]]
+name = "merge_compare"
+harness = false
+
 [[example]]
 name = "readme_example"
 

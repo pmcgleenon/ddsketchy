@@ -152,6 +152,16 @@ Mean insert time per value (N = 1,000,000 inserts, lower is better):
 | quantile-sketch | 8.8 | 113.4 Melem/s |
 | sketches-ddsketch | 19.7 | 50.8 Melem/s |
 
+### Merge
+
+Merging two 100,000-value sketches:
+
+| Implementation | time/merge |
+|---|---|
+| ddsketchy | 155.6 ns |
+| sketches-ddsketch | 495.1 ns |
+| quantile-sketch | 1.12 µs |
+
 ## References
 
 * [DDSketch: A Fast and Fully-Mergeable Quantile Sketch with Relative-Error Guarantees](https://arxiv.org/pdf/1908.10693.pdf) - The original paper describing the DDSketch algorithm
