@@ -6,9 +6,15 @@
 // Prints quantiles at the same probe points nyc_taxi_quantile_validation
 // prints, so the two outputs can be compared by eye or by a small script.
 //
+// With no argument, uses NewDefaultDDSketch (an unbounded store, same as
+// nyc_taxi_quantile_validation.rs's ddsketchy/sketches-ddsketch default
+// bin caps). With a numeric argument, builds a bin-capped store instead
+// (store.NewCollapsingLowestDenseStore), for a peak-RSS comparison against
+// ddsketchy/sketches-ddsketch's own max_bins-limited stores.
+//
 // Usage:
 //   python3 scripts/extract_trip_times.py file1.parquet file2.parquet... \
-//     | go run ./examples/go_reference
+//     | go run ./examples/go_reference [max_bins]
 package main
 
 import (
@@ -18,16 +24,37 @@ import (
 	"io"
 	"math"
 	"os"
+	"strconv"
 
 	"github.com/DataDog/sketches-go/ddsketch"
+	"github.com/DataDog/sketches-go/ddsketch/mapping"
+	"github.com/DataDog/sketches-go/ddsketch/store"
 )
 
 const alpha = 0.01
 
 func main() {
-	sketch, err := ddsketch.NewDefaultDDSketch(alpha)
-	if err != nil {
-		panic(err)
+	var sketch *ddsketch.DDSketch
+	if len(os.Args) > 1 {
+		maxBins, err := strconv.Atoi(os.Args[1])
+		if err != nil {
+			panic(err)
+		}
+		m, err := mapping.NewLogarithmicMapping(alpha)
+		if err != nil {
+			panic(err)
+		}
+		sketch = ddsketch.NewDDSketch(
+			m,
+			store.NewCollapsingLowestDenseStore(maxBins),
+			store.NewCollapsingLowestDenseStore(maxBins),
+		)
+	} else {
+		var err error
+		sketch, err = ddsketch.NewDefaultDDSketch(alpha)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	reader := bufio.NewReaderSize(os.Stdin, 1<<20)

@@ -158,6 +158,43 @@ q=0.900: ddsketchy=2186.826  sketches-ddsketch=2186.826  quantile-sketch=2153.19
 q=0.990: ddsketchy=4065.236  sketches-ddsketch=4065.236  quantile-sketch=4058.880  sketches-go=4065.236
 ```
 
+The checks above only show the sketches agreeing with *each other*. `scripts/exact_quantiles.py`
+goes further: `trip_time` is a non-negative integer number of seconds with a modest
+range (max observed: 240,764), so rather than sorting a billion values, it builds an
+exact count-per-second histogram in one streaming pass (a few MB regardless of row
+count) and walks its cumulative sum -- no sketch, no approximation. Every sketch
+stayed within the 1% `alpha` bound against this true ground truth, worst case
+(ddsketchy at p50) at 0.97%:
+
+| q | exact | ddsketchy (err) | quantile-sketch (err) |
+|---|---|---|---|
+| 0.50 | 935 | 944.049 (0.97%) | 937.867 (0.31%) |
+| 0.90 | 2167 | 2186.826 (0.91%) | 2153.193 (0.64%) |
+| 0.99 | 4079 | 4065.236 (0.34%) | 4058.880 (0.49%) |
+
+### Memory
+
+`DDSketch`-family implementations cap their bucket array at a configurable bin
+limit (`max_bins` for ddsketchy, `max_num_bins` for sketches-ddsketch) as a
+safety ceiling against unbounded growth, but only actually allocate what the
+data's value range needs (rounded up to the nearest chunk), not the ceiling
+itself. For this dataset (alpha=0.01, range ~1 to ~240,764) that's ~640 bins
+regardless of whether the configured cap is 1024 or 4096 -- so tightening the
+cap changes nothing here. Measured with `examples/nyc_taxi_memory.rs`
+(`/usr/bin/time -v`, peak RSS, one sketch per process):
+
+| Implementation | default cap | tightened cap |
+|---|---|---|
+| ddsketchy | 3416 KB (max_bins=4096) | 3408 KB (1024) |
+| sketches-ddsketch | 3272 KB (max_num_bins=2048) | 3440 KB (1024) |
+| sketches-go | 5116 KB (unbounded) | 5000 KB (1024) |
+| quantile-sketch (fixed range) | 3336 KB | -- |
+
+All deltas are within normal process-level noise, confirming the cap wasn't
+the binding constraint for this data. `sketches-go`'s higher baseline is
+consistent with Go runtime/GC overhead rather than sketch size -- its own
+bucket array is a few KB either way, same as the others.
+
 ## References
 
 * [DDSketch: A Fast and Fully-Mergeable Quantile Sketch with Relative-Error Guarantees](https://arxiv.org/pdf/1908.10693.pdf) - The original paper describing the DDSketch algorithm

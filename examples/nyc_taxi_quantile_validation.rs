@@ -24,9 +24,10 @@ const ALPHA: f64 = 0.01;
 const PROBES: usize = 999;
 // Must bracket the full range of trip_time seconds seen across all months
 // (observed min=0.990, max=240472.982); quantile_sketch::insert panics on
-// out-of-range values, so these are set with margin rather than tightly.
-const MIN_VALUE: f64 = 0.1;
-const MAX_VALUE: f64 = 1_000_000.0;
+// out-of-range values, so these keep a safety margin rather than matching
+// the observed range exactly.
+const MIN_VALUE: f64 = 0.5;
+const MAX_VALUE: f64 = 300_000.0;
 
 fn main() {
     let mut sketch = DDSketch::new(ALPHA).expect("valid alpha");
