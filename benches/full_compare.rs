@@ -54,7 +54,8 @@ fn bench_insert(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::new("quantile-sketch", size), &size, |b, _| {
             b.iter(|| {
-                let s = ConcurrentDDSketch::with_err_and_range(RELATIVE_ERROR, MIN_VALUE, MAX_VALUE);
+                let s =
+                    ConcurrentDDSketch::with_err_and_range(RELATIVE_ERROR, MIN_VALUE, MAX_VALUE);
                 for &v in &values {
                     s.insert(v);
                 }

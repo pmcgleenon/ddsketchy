@@ -43,7 +43,9 @@ fn main() {
     };
 
     let mut ddsketchy_sketch = match &mode {
-        Mode::Ddsketchy(max_bins) => Some(DDSketch::with_max_bins(ALPHA, *max_bins).expect("valid alpha")),
+        Mode::Ddsketchy(max_bins) => {
+            Some(DDSketch::with_max_bins(ALPHA, *max_bins).expect("valid alpha"))
+        }
         _ => None,
     };
     let mut sketches_ddsketch_sketch = match &mode {
@@ -53,7 +55,9 @@ fn main() {
         _ => None,
     };
     let quantile_sketch_sketch = match &mode {
-        Mode::QuantileSketch => Some(ConcurrentDDSketch::with_err_and_range(ALPHA, 0.5, 300_000.0)),
+        Mode::QuantileSketch => Some(ConcurrentDDSketch::with_err_and_range(
+            ALPHA, 0.5, 300_000.0,
+        )),
         _ => None,
     };
 
@@ -92,7 +96,10 @@ fn main() {
         eprintln!("ddsketchy: p50={:.3}", s.quantile(0.5).unwrap());
     }
     if let Some(s) = &sketches_ddsketch_sketch {
-        eprintln!("sketches-ddsketch: p50={:.3}", s.quantile(0.5).unwrap().unwrap());
+        eprintln!(
+            "sketches-ddsketch: p50={:.3}",
+            s.quantile(0.5).unwrap().unwrap()
+        );
     }
     if let Some(s) = &quantile_sketch_sketch {
         eprintln!("quantile-sketch: p50={:.3}", s.quantile(0.5).unwrap());

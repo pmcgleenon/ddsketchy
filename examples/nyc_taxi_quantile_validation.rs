@@ -92,7 +92,9 @@ fn main() {
         let ours = sketch.quantile(q).unwrap();
         let theirs = reference.quantile(q).unwrap().unwrap();
         let qs = quantile_sketch.quantile(q).unwrap();
-        println!("q={q:.3}: ddsketchy={ours:.3}  sketches-ddsketch={theirs:.3}  quantile-sketch={qs:.3}");
+        println!(
+            "q={q:.3}: ddsketchy={ours:.3}  sketches-ddsketch={theirs:.3}  quantile-sketch={qs:.3}"
+        );
     }
 
     assert!(

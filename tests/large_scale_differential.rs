@@ -32,7 +32,14 @@ use sketches_ddsketch::{Config, DDSketch as ReferenceDDSketch};
 const ALPHA: f64 = 0.01;
 const PROBES: usize = 999;
 
-fn assert_within_alpha(name: &str, q: f64, estimate: f64, exact: f64, alpha: f64, max_seen: &mut f64) {
+fn assert_within_alpha(
+    name: &str,
+    q: f64,
+    estimate: f64,
+    exact: f64,
+    alpha: f64,
+    max_seen: &mut f64,
+) {
     if exact == 0.0 {
         return;
     }
@@ -47,7 +54,13 @@ fn assert_within_alpha(name: &str, q: f64, estimate: f64, exact: f64, alpha: f64
 /// Exact-ground-truth check: build from `n` streamed values, keep only the
 /// sorted array (not the generator), compare quantile() against the true
 /// rank at `PROBES` points spanning (0, 1).
-fn differential_exact(name: &str, n: usize, alpha: f64, mut gen: impl FnMut(&mut StdRng) -> f64, seed: u64) {
+fn differential_exact(
+    name: &str,
+    n: usize,
+    alpha: f64,
+    mut gen: impl FnMut(&mut StdRng) -> f64,
+    seed: u64,
+) {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut sketch = DDSketch::new(alpha).unwrap();
     let mut values = Vec::with_capacity(n);
