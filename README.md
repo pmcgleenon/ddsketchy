@@ -152,17 +152,6 @@ Mean insert time per value (N = 1,000,000 inserts, lower is better):
 | quantile-sketch | 8.8 | 113.4 Melem/s |
 | sketches-ddsketch | 19.7 | 50.8 Melem/s |
 
-`Cubic` mapping cuts ddsketchy's own insert time by ~37% versus its default, and is
-roughly 2x faster than sketches-ddsketch, while staying within ~19% of quantile-sketch
-(a simpler lock-free counter design that has no mapping-precision/speed tradeoff to make).
-
-These numbers were built with `RUSTFLAGS="-C target-cpu=native"`. Without it, the merge
-and insert loops compile to SSE2 (`paddq`/`xmm`) rather than AVX2 (`vpaddq`/`ymm`)
-instructions, since `rustc`'s default `x86_64` target doesn't assume AVX2 is present on
-every host. `target-cpu=native` isn't part of this crate's published build (it isn't
-portable across machines), but it's a real, measurable win if you control the deployment
-CPU and set it yourself.
-
 ## References
 
 * [DDSketch: A Fast and Fully-Mergeable Quantile Sketch with Relative-Error Guarantees](https://arxiv.org/pdf/1908.10693.pdf) - The original paper describing the DDSketch algorithm
