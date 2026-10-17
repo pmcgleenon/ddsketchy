@@ -65,12 +65,13 @@ pub const CUBIC_GAMMA_EXPONENT: f64 = 10.0 * std::f64::consts::LN_2 / 7.0;
 /// [`CUBIC_GAMMA_EXPONENT`]'s gamma adjustment at the sketch level to bring
 /// the *combined* error back within budget; see `DDSketch::new`.
 ///
-/// # Panics (debug only)
+/// # Preconditions
 ///
 /// Only valid for finite, normal, positive `value` (`value >=
-/// f64::MIN_POSITIVE`). Callers must ensure this — `DDSketch::add` already
-/// filters non-finite values and routes sub-`min_indexable_value` magnitudes
-/// to the zero bucket before this is called.
+/// f64::MIN_POSITIVE`); not enforced by an assertion. Callers must ensure
+/// this — `DDSketch::add` already filters non-finite values and routes
+/// sub-`min_indexable_value` magnitudes to the zero bucket before this is
+/// called.
 #[inline]
 pub fn fast_ln(value: f64) -> f64 {
     const MANTISSA_MASK: u64 = (1_u64 << 52) - 1;
