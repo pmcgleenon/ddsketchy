@@ -28,6 +28,10 @@ harness = false
 name = "quantile_sketch_compare"
 harness = false
 
+[[bench]]
+name = "full_compare"
+harness = false
+
 [[example]]
 name = "readme_example"
 
