@@ -707,47 +707,42 @@ fn test_cubic_mapping_diverges_from_logarithmic() {
 }
 
 #[test]
-fn test_cubic_mapping_within_alpha_across_distributions() {
-    // Interior quantiles only: q=0.0/q=1.0 reconstruct from the edge bucket
-    // rather than the tracked exact min/max and are known-approximate for
-    // both mappings (see `DDSketch::min`'s doc comment) — the existing
-    // `test_normal_distribution_statistical` / `test_exponential_distribution_statistical`
-    // above likewise only check interior quantiles, never the extremes.
-    let interior_quantiles: Vec<f64> = TEST_QUANTILES
-        .iter()
-        .copied()
-        .filter(|&q| q > 0.0 && q < 1.0)
-        .collect();
-
-    for alpha in [0.001, 0.01, 0.05] {
-        let normal_data = normal_dataset(100.0, 15.0, 2000);
-        let mut sketch = DDSketch::builder(alpha)
-            .mapping(IndexMapping::Cubic)
-            .build()
-            .unwrap();
-        for &v in &normal_data {
-            sketch.add(v);
-        }
-        for &q in &interior_quantiles {
-            let rank = (q * (normal_data.len() as f64 - 1.0)) as usize;
-            let expected = normal_data[rank];
-            let approx = sketch.quantile(q).unwrap();
-            assert_within_relative_error(approx, expected, alpha);
-        }
-
-        let exp_data = exponential_dataset(2.0, 2000);
-        let mut sketch = DDSketch::builder(alpha)
-            .mapping(IndexMapping::Cubic)
-            .build()
-            .unwrap();
-        for &v in &exp_data {
-            sketch.add(v);
-        }
-        for &q in &interior_quantiles {
-            let rank = (q * (exp_data.len() as f64 - 1.0)) as usize;
-            let expected = exp_data[rank];
-            let approx = sketch.quantile(q).unwrap();
-            assert_within_relative_error(approx, expected, alpha);
+fn test_per_value_guarantee_sweep_both_mappings() {
+    // The DDSketch guarantee is per value: for every v, the reconstructed value
+    // of v's bucket is within `alpha` of v. Sweep the mantissa across several
+    // binades (the Cubic approximation's error is a function of the mantissa)
+    // and check the bound strictly -- not the 2x tolerance that
+    // `assert_within_relative_error` allows for the merge tests above.
+    // Also check that the public `key()` names the bin `add()` incremented.
+    for mapping in [IndexMapping::Logarithmic, IndexMapping::Cubic] {
+        for alpha in [0.001, 0.01, 0.05] {
+            for exponent in -6..=6 {
+                let base = 2f64.powi(exponent);
+                let steps = 1000;
+                for i in 0..steps {
+                    let v = base * (1.0 + i as f64 / steps as f64);
+                    for signed in [v, -v] {
+                        let mut sketch = DDSketch::builder(alpha).mapping(mapping).build().unwrap();
+                        // count == 1 short-circuits quantile() to the exact
+                        // min/max; insert twice to force bucket reconstruction.
+                        sketch.add(signed);
+                        sketch.add(signed);
+                        let est = sketch.quantile(0.5).unwrap();
+                        let rel_err = ((est - signed) / signed).abs();
+                        assert!(
+                            rel_err <= alpha + 1e-12,
+                            "{mapping:?} alpha={alpha} v={signed}: rel_err={rel_err} exceeds alpha"
+                        );
+                    }
+                    let mut sketch = DDSketch::builder(alpha).mapping(mapping).build().unwrap();
+                    sketch.add(v);
+                    assert_eq!(
+                        sketch.key(v),
+                        sketch.positive_key_at_rank(0),
+                        "{mapping:?} alpha={alpha} v={v}: key() disagrees with the bin add() stored"
+                    );
+                }
+            }
         }
     }
 }

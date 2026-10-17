@@ -1,4 +1,4 @@
-use crate::DDSketch;
+use crate::{DDSketch, IndexMapping};
 
 #[test]
 fn test_empty_sketch_serialization() {
@@ -260,4 +260,45 @@ fn test_empty_sketch_json_structure() {
     assert!(json.contains("\"min\": null"));
     assert!(json.contains("\"max\": null"));
     assert!(json.contains("\"count\": 0"));
+}
+
+#[test]
+fn test_mapping_field_is_serialized_and_defaults_when_absent() {
+    // The mapping is always written so the format is self-describing...
+    let mut sketch = DDSketch::new(0.01).unwrap();
+    sketch.add(1.0);
+    sketch.add(2.0);
+    let json = serde_json::to_string(&sketch).unwrap();
+    assert!(json.contains("\"mapping\":\"Logarithmic\""), "{json}");
+
+    // ...and data written before `IndexMapping` existed (no `mapping` key)
+    // must still deserialize, as the Logarithmic mapping.
+    let mut value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    value.as_object_mut().unwrap().remove("mapping");
+    let legacy_json = serde_json::to_string(&value).unwrap();
+    let restored: DDSketch = serde_json::from_str(&legacy_json).unwrap();
+    assert_eq!(restored.mapping(), IndexMapping::Logarithmic);
+    assert_eq!(restored.count(), 2);
+    assert_eq!(
+        restored.quantile(0.5).unwrap(),
+        sketch.quantile(0.5).unwrap()
+    );
+}
+
+#[test]
+fn test_cubic_sketch_roundtrips_mapping() {
+    let mut sketch = DDSketch::builder(0.01)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    sketch.add(1.0);
+    sketch.add(2.0);
+    let json = serde_json::to_string(&sketch).unwrap();
+    assert!(json.contains("\"mapping\":\"Cubic\""), "{json}");
+    let restored: DDSketch = serde_json::from_str(&json).unwrap();
+    assert_eq!(restored.mapping(), IndexMapping::Cubic);
+    assert_eq!(
+        restored.quantile(0.5).unwrap(),
+        sketch.quantile(0.5).unwrap()
+    );
 }

@@ -16,7 +16,7 @@ pub enum DDSketchError {
     /// non-finite.
     InvalidQuantile,
     /// Attempted to merge two sketches whose `alpha` (and therefore `gamma`)
-    /// values differ.
+    /// values differ, or whose [`IndexMapping`]s differ.
     AlphaMismatch,
     /// Bin count exceeds the sketch's configured maximum.
     BinCountMismatch,
@@ -28,7 +28,10 @@ impl std::fmt::Display for DDSketchError {
             DDSketchError::InvalidAlpha => write!(f, "Alpha must be in range (0, 1)"),
             DDSketchError::InvalidQuantile => write!(f, "Quantile must be in range [0, 1]"),
             DDSketchError::AlphaMismatch => {
-                write!(f, "Cannot merge sketches with different alpha values")
+                write!(
+                    f,
+                    "Cannot merge sketches with different alpha values or index mappings"
+                )
             }
             DDSketchError::BinCountMismatch => write!(f, "Bin count exceeds maximum allowed"),
         }
@@ -134,6 +137,10 @@ pub struct DDSketch {
     inv_ln_gamma: f64,
     offset: i32, // Changed to i32 like reference
     min_indexable_value: f64,
+    // Always written, so the serialized form is self-describing. `default` so
+    // that data written before `IndexMapping` existed (no `mapping` key) still
+    // deserializes as `Logarithmic`. Readers older than this field reject the
+    // new form (`deny_unknown_fields`); that is a deliberate one-way break.
     #[cfg_attr(feature = "serde", serde(default))]
     mapping: IndexMapping,
 
@@ -196,7 +203,17 @@ impl DDSketch {
     /// for implementing custom stores.
     #[inline]
     pub fn key(&self, value: f64) -> i32 {
-        crate::mapping::value_to_key_i32(value, self.inv_ln_gamma)
+        match self.mapping {
+            IndexMapping::Logarithmic => crate::mapping::value_to_key_i32(value, self.inv_ln_gamma),
+            // Must use the same approximate log as `add()`, or the returned key
+            // is not the bin `add()` actually incremented.
+            IndexMapping::Cubic => {
+                if value == 0.0 {
+                    return 0;
+                }
+                (crate::mapping::fast_ln(value.abs()) * self.inv_ln_gamma).ceil() as i32
+            }
+        }
     }
 
     /// Returns the smallest positive magnitude this sketch can represent.
@@ -223,7 +240,14 @@ impl DDSketch {
             // (see `DDSketchBuilder::build`); the centering constant must
             // use that same adjusted gamma, not the nominal `self.gamma`,
             // to stay the exact inverse of the bucket width `add()` uses.
-            IndexMapping::Cubic => mapping_gamma_ln.exp(),
+            IndexMapping::Cubic => {
+                // Bucket `key` holds values with fast_ln(v) in ((key-1)·lnγ', key·lnγ'].
+                // Reconstruct from the *exact* inverse of fast_ln (as Datadog does),
+                // not exp(): the two differ by up to ~0.1% in value, which would eat
+                // into the alpha budget.
+                let lower = crate::mapping::fast_ln_inverse((key as f64 - 1.0) * mapping_gamma_ln);
+                return lower * (1.0 + self.alpha);
+            }
         };
         crate::mapping::key_to_value_i32(key, mapping_gamma, mapping_gamma_ln)
     }
@@ -246,23 +270,52 @@ impl DDSketch {
     /// ```
     #[inline]
     pub fn add(&mut self, value: f64) {
+        if self.mapping == IndexMapping::Cubic {
+            return self.add_cubic(value);
+        }
+        // Default (exact `ln()`) path. Kept verbatim and inlined here, with the
+        // Cubic path out of line, so that the code a caller's loop sees for the
+        // default mapping is the same as before `IndexMapping` existed: one
+        // predictable early-exit branch is the only addition. Folding both
+        // mappings into one inlined body measurably pessimises this path on
+        // x86-64 (EPYC 7R13: +10-20%/insert).
         if !value.is_finite() {
             return;
         }
 
         if value >= self.min_indexable_value {
-            let ln_value = match self.mapping {
-                IndexMapping::Logarithmic => value.ln(),
-                IndexMapping::Cubic => crate::mapping::fast_ln(value),
-            };
-            let key = (ln_value * self.inv_ln_gamma).ceil() as i32;
+            let key = (value.ln() * self.inv_ln_gamma).ceil() as i32;
             self.positive_store.add(key);
         } else if value <= -self.min_indexable_value {
-            let ln_value = match self.mapping {
-                IndexMapping::Logarithmic => (-value).ln(),
-                IndexMapping::Cubic => crate::mapping::fast_ln(-value),
-            };
-            let key = (ln_value * self.inv_ln_gamma).ceil() as i32;
+            let key = ((-value).ln() * self.inv_ln_gamma).ceil() as i32;
+            self.negative_store.add(key);
+        } else {
+            self.zero_count += 1;
+        }
+
+        self.sum += value;
+        if value < self.min {
+            self.min = value;
+        }
+        if value > self.max {
+            self.max = value;
+        }
+    }
+
+    /// [`IndexMapping::Cubic`] insert path; deliberately not inlined into
+    /// callers, see [`DDSketch::add`]. `Store::add` is still inlined *here*,
+    /// which is what makes the cubic path fast.
+    #[inline(never)]
+    fn add_cubic(&mut self, value: f64) {
+        if !value.is_finite() {
+            return;
+        }
+
+        if value >= self.min_indexable_value {
+            let key = (crate::mapping::fast_ln(value) * self.inv_ln_gamma).ceil() as i32;
+            self.positive_store.add(key);
+        } else if value <= -self.min_indexable_value {
+            let key = (crate::mapping::fast_ln(-value) * self.inv_ln_gamma).ceil() as i32;
             self.negative_store.add(key);
         } else {
             self.zero_count += 1;

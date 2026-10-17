@@ -88,9 +88,52 @@ pub fn fast_ln(value: f64) -> f64 {
     log2 * std::f64::consts::LN_2
 }
 
+/// Exact inverse of [`fast_ln`] (Cardano's formula), ported from Datadog's
+/// `approximateInverseLog`. Returns the value `v` such that `fast_ln(v) == ln_x`.
+#[inline]
+pub fn fast_ln_inverse(ln_x: f64) -> f64 {
+    const A: f64 = 6.0 / 35.0;
+    const B: f64 = -3.0 / 5.0;
+    const C: f64 = 10.0 / 7.0;
+    let x = ln_x / std::f64::consts::LN_2;
+    let exponent = x.floor();
+    let frac = x - exponent;
+    let d0 = B * B - 3.0 * A * C;
+    let d1 = 2.0 * B * B * B - 9.0 * A * B * C - 27.0 * A * A * frac;
+    let p = ((d1 - (d1 * d1 - 4.0 * d0 * d0 * d0).sqrt()) / 2.0).cbrt();
+    let significand_plus_one = -(B + p + d0 / p) / (3.0 * A) + 1.0;
+    // Scale by 2^exponent through multiplication rather than splicing the
+    // significand's mantissa bits under the exponent as the reference port
+    // does: rounding in cbrt()/sqrt() can leave `significand_plus_one` an ulp
+    // outside [1, 2) at a binade edge, and bit-splicing then returns a value
+    // off by a factor of two (libm-dependent; observed 0.25 -> 0.5 on glibc).
+    // Multiplying by an exact power of two cannot do that.
+    let exponent = (exponent as i32).clamp(-1022, 1023);
+    significand_plus_one * f64::from_bits(((exponent + 1023) as u64) << 52)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fast_ln_inverse_roundtrips() {
+        let check = |v: f64| {
+            let back = fast_ln_inverse(fast_ln(v));
+            assert!(((back - v) / v).abs() < 1e-12, "v={v} back={back}");
+        };
+        for i in 1..200_000 {
+            check(i as f64 * 0.01);
+        }
+        // Binade edges: a rounding error in the solved significand must not
+        // flip the result by a factor of two (it did with bit-splicing).
+        for e in -1000..=1000 {
+            let p = 2f64.powi(e);
+            check(p);
+            check(p * (1.0 + f64::EPSILON));
+            check(p * (1.0 - f64::EPSILON / 2.0));
+        }
+    }
 
     #[test]
     fn fast_ln_error_is_bounded() {
