@@ -120,6 +120,59 @@ print(f"P99: {sketch.quantile(0.99)}")
 print(f"Count: {sketch.count}, Sum: {sketch.sum}, Mean: {sketch.mean}")
 ```
 
+## Performance
+
+Benchmarked on an AWS `c6a.xlarge` (AMD EPYC 7R13, 4 vCPU) against
+[`sketches-ddsketch`](https://github.com/mheffner/rust-sketches-ddsketch) (Datadog's
+Go-port reference) and [`quantile-sketch`](https://github.com/tomtomwombat/quantile-sketch)
+(a lock-free, atomics-based DDSketch), all configured for 1% relative error, built from
+a 100,000-value dataset:
+
+### Quantile
+
+| Implementation | q=0.5 | q=0.9 | q=0.99 |
+|---|---|---|---|
+| ddsketchy | 54.2 ns | 37.9 ns | 34.5 ns |
+| sketches-ddsketch | 261.3 ns | 272.0 ns | 275.5 ns |
+| quantile-sketch | 705.4 ns | 162.4 ns | 159.5 ns |
+
+`Store::key_at_rank` scans from both ends of the bucket array at once (an
+interleaved two-pointer scan bounded by `min(forward, backward)` cost),
+rather than guessing a single direction from the requested quantile's rank.
+An earlier version picked a direction using a rank-based heuristic — the same
+one `quantile-sketch` uses, which is why its own p50 above is much slower
+than its p90/p99: that heuristic assumes rank-space is proportional to
+bucket-index space, which breaks down for data whose mass concentrates
+unevenly across the log-spaced buckets. The two-pointer scan has no
+direction to get wrong.
+
+### Correctness validation at scale
+
+Beyond the existing unit and property tests, `tests/large_scale_differential.rs`
+(run with `cargo test --release -- --ignored --nocapture`) adds:
+- Exact-ground-truth checks: tens of millions of values per distribution
+  (including the pathological uniform-by-value case that broke the rank-based
+  heuristic above), compared against a true sorted-array quantile, not another
+  sketch.
+- Billion-scale streamed checks against `sketches-ddsketch` (an independently
+  implemented Datadog-algorithm port), values fed to both sketches one at a
+  time and never stored, so memory stays O(bucket count) regardless of N.
+
+`examples/nyc_taxi_quantile_validation.rs` runs the same kind of check against
+a real dataset: NYC TLC FHVHV (Uber/Lyft) trip-duration data, streamed via
+`scripts/extract_trip_times.py`. Across 1,002,281,387 real trip durations,
+ddsketchy and sketches-ddsketch agreed exactly (0.000000 relative difference)
+at every probed quantile:
+
+```
+$ python3 scripts/extract_trip_times.py <parquet files...> \
+    | ./target/release/examples/nyc_taxi_quantile_validation
+count=1002281387 max_rel_diff_vs_sketches_ddsketch=0.000000 (bound=2*alpha=0.020)
+q=0.500: ddsketchy=944.049  sketches-ddsketch=944.049
+q=0.900: ddsketchy=2186.826  sketches-ddsketch=2186.826
+q=0.990: ddsketchy=4065.236  sketches-ddsketch=4065.236
+```
+
 ## References
 
 * [DDSketch: A Fast and Fully-Mergeable Quantile Sketch with Relative-Error Guarantees](https://arxiv.org/pdf/1908.10693.pdf) - The original paper describing the DDSketch algorithm

@@ -157,13 +157,60 @@ impl Store {
         self.shift_bins(shift)
     }
 
+    /// Finds the key of the bucket containing the `rank`-th smallest
+    /// element (0-indexed). Returns `self.max_key` if `rank` is out of
+    /// range (including on an empty store, where `count == 0` makes every
+    /// `rank` out of range).
+    ///
+    /// Scans from *both* ends of the bin array at once — one slot from the
+    /// front, one from the back, per iteration — and returns as soon as
+    /// either side's cumulative count crosses its target (`rank` from the
+    /// front, `reversed_rank = count - 1 - rank` from the back). Both
+    /// directions necessarily land on the same bucket for a given rank, so
+    /// this is a pure cost optimization, not a behavior change.
+    ///
+    /// This deliberately does *not* pick a direction by comparing `rank`
+    /// to `count` (i.e. "is this rank in the lower or upper half by
+    /// count") the way a first version of this did, and the way
+    /// quantile-sketch's `quantile()` still does. That heuristic assumes
+    /// rank-space and bucket-array-index-space are proportional, which
+    /// fails whenever the data isn't uniform across the *log-spaced*
+    /// buckets: e.g. values drawn uniformly by *value* (not by value's
+    /// log) concentrate most of their rank-mass in a short run of buckets
+    /// near one end, so the rank-based midpoint can sit at ~95% of the way
+    /// through the bucket array rather than ~50%, picking the wrong — much
+    /// longer — direction. Racing both directions costs at most ~2x the
+    /// genuinely-shorter side instead of being unboundedly wrong when the
+    /// heuristic misguesses; see `tests::key_at_rank_bidirectional_matches_forward_scan`
+    /// for the correctness property this relies on, checked against a
+    /// reference forward-only implementation across many bin configurations
+    /// and ranks.
+    #[inline]
     pub fn key_at_rank(&self, rank: u64) -> i32 {
-        let mut n = 0u64;
-        for (i, bin) in self.bins.iter().enumerate() {
-            n += *bin;
-            if n > rank {
-                return i as i32 + self.offset;
+        if rank >= self.count {
+            return self.max_key;
+        }
+
+        let reversed_rank = self.count - 1 - rank;
+        let mut forward_sum = 0u64;
+        let mut backward_sum = 0u64;
+        let mut lo = 0usize;
+        let mut hi = self.bins.len() - 1;
+
+        loop {
+            forward_sum += self.bins[lo];
+            if forward_sum > rank {
+                return lo as i32 + self.offset;
             }
+            if lo == hi {
+                break;
+            }
+            backward_sum += self.bins[hi];
+            if backward_sum > reversed_rank {
+                return hi as i32 + self.offset;
+            }
+            lo += 1;
+            hi -= 1;
         }
 
         self.max_key
@@ -287,5 +334,88 @@ mod tests {
         // Verify merged range
         assert_eq!(s1.key_at_rank(0), 0);
         assert_eq!(s1.key_at_rank(99), 99);
+    }
+
+    /// Reference implementation: always scans forward from the start,
+    /// never choosing a direction. This is exactly what `key_at_rank` did
+    /// before the bidirectional-scan optimization.
+    fn key_at_rank_forward_reference(store: &Store, rank: u64) -> i32 {
+        let mut n = 0u64;
+        for (i, bin) in store.bins.iter().enumerate() {
+            n += *bin;
+            if n > rank {
+                return i as i32 + store.offset;
+            }
+        }
+        store.max_key
+    }
+
+    #[test]
+    fn key_at_rank_bidirectional_matches_forward_scan() {
+        // Property: scanning from the nearer end must always land on the
+        // same bucket as always scanning forward, for every rank —
+        // including out-of-range ranks and an empty store. A simple xorshift
+        // RNG avoids pulling `rand` into this unit-test module.
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+
+        for empty in [true, false] {
+            if empty {
+                let store = Store::new(2048);
+                for rank in [0u64, 1, 100] {
+                    assert_eq!(
+                        store.key_at_rank(rank),
+                        key_at_rank_forward_reference(&store, rank)
+                    );
+                }
+                continue;
+            }
+
+            for _ in 0..200 {
+                let mut store = Store::new(4096);
+                let num_keys = 1 + (next() % 500) as i32;
+                let start_key = -1000 + (next() % 2000) as i32;
+                for k in 0..num_keys {
+                    let key = start_key + k;
+                    // Insert a variable, sometimes-zero count per key so
+                    // sparse bins (count 0) are exercised too.
+                    let times = next() % 4;
+                    for _ in 0..times {
+                        store.add(key);
+                    }
+                }
+                if store.count() == 0 {
+                    continue;
+                }
+
+                // In-range ranks, out-of-range ranks, and the exact
+                // boundary (count - 1, count, count + 1).
+                let probe_ranks = [
+                    0u64,
+                    store.count() / 4,
+                    store.count() / 2,
+                    (3 * store.count()) / 4,
+                    store.count().saturating_sub(1),
+                    store.count(),
+                    store.count() + 1,
+                    next() % (store.count() + 10),
+                ];
+                for &rank in &probe_ranks {
+                    let expected = key_at_rank_forward_reference(&store, rank);
+                    let actual = store.key_at_rank(rank);
+                    assert_eq!(
+                        actual,
+                        expected,
+                        "rank={rank} count={} start_key={start_key} num_keys={num_keys}",
+                        store.count()
+                    );
+                }
+            }
+        }
     }
 }
