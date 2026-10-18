@@ -174,6 +174,12 @@ fixed range is sized to each dataset.
 
 ![quantile() latency by distribution and quantile](https://raw.githubusercontent.com/pmcgleenon/ddsketchy/main/assets/quantile_bench.svg)
 
+sketches-ddsketch's quantile times are sensitive to code layout: rebuilding the
+same benchmark source on the same machine moved them by up to 1.8x (uniform p50
+measured 188 ns in one build and 340 ns in this one). ddsketchy and
+quantile-sketch stayed within a few percent across builds. Treat the
+sketches-ddsketch bars as one sample from that range.
+
 <details>
 <summary>Exact numbers</summary>
 
@@ -181,35 +187,42 @@ fixed range is sized to each dataset.
 
 | Implementation | p01 | p10 | p50 | p90 | p99 |
 |---|---|---|---|---|---|
-| ddsketchy | 59 ns | 43 ns | 32 ns | 32 ns | 26 ns |
-| sketches-ddsketch | 134 ns | 172 ns | 188 ns | 204 ns | 199 ns |
-| quantile-sketch | 399 ns | 474 ns | 525 ns | 186 ns | 181 ns |
+| ddsketchy | 62 ns | 45 ns | 34 ns | 32 ns | 26 ns |
+| sketches-ddsketch | 232 ns | 295 ns | 340 ns | 357 ns | 359 ns |
+| quantile-sketch | 398 ns | 474 ns | 524 ns | 187 ns | 184 ns |
 
 **Log-uniform, `1..1_000_000`**
 
 | Implementation | p01 | p10 | p50 | p90 | p99 |
 |---|---|---|---|---|---|
-| ddsketchy | 23 ns | 41 ns | 66 ns | 38 ns | 31 ns |
-| sketches-ddsketch | 33 ns | 56 ns | 134 ns | 212 ns | 237 ns |
-| quantile-sketch | 175 ns | 214 ns | 401 ns | 216 ns | 174 ns |
+| ddsketchy | 25 ns | 43 ns | 67 ns | 40 ns | 32 ns |
+| sketches-ddsketch | 40 ns | 77 ns | 233 ns | 385 ns | 420 ns |
+| quantile-sketch | 174 ns | 216 ns | 403 ns | 219 ns | 178 ns |
 
 **Lognormal, μ=0, σ=2**
 
 | Implementation | p01 | p10 | p50 | p90 | p99 |
 |---|---|---|---|---|---|
-| ddsketchy | 61 ns | 66 ns | 84 ns | 68 ns | 46 ns |
-| sketches-ddsketch | 92 ns | 122 ns | 159 ns | 193 ns | 230 ns |
-| quantile-sketch | 345 ns | 416 ns | 497 ns | 368 ns | 319 ns |
+| ddsketchy | 62 ns | 69 ns | 85 ns | 69 ns | 48 ns |
+| sketches-ddsketch | 149 ns | 206 ns | 277 ns | 349 ns | 407 ns |
+| quantile-sketch | 348 ns | 415 ns | 498 ns | 395 ns | 331 ns |
 
 **Pareto, scale 1, α=1**
 
 | Implementation | p01 | p10 | p50 | p90 | p99 |
 |---|---|---|---|---|---|
-| ddsketchy | 20 ns | 27 ns | 28 ns | 40 ns | 56 ns |
-| sketches-ddsketch | 19 ns | 26 ns | 35 ns | 63 ns | 95 ns |
-| quantile-sketch | 162 ns | 163 ns | 183 ns | 444 ns | 383 ns |
+| ddsketchy | 11 ns | 28 ns | 30 ns | 41 ns | 56 ns |
+| sketches-ddsketch | 21 ns | 27 ns | 42 ns | 91 ns | 154 ns |
+| quantile-sketch | 160 ns | 163 ns | 182 ns | 498 ns | 422 ns |
 
 </details>
+
+To regenerate the chart and tables:
+
+```sh
+RUSTFLAGS="-C target-cpu=native" cargo bench --bench quantile_compare
+python3 scripts/plot_quantile_bench.py --machine "<hardware and flags>" --tables
+```
 
 ## References
 
