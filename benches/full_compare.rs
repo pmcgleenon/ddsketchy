@@ -92,7 +92,7 @@ fn bench_quantile(c: &mut Criterion) {
         s
     };
 
-    for &q in &[0.5, 0.9, 0.99] {
+    for &q in &[0.01, 0.1, 0.5, 0.9, 0.99] {
         group.bench_with_input(BenchmarkId::new("ddsketchy", q), &q, |b, &q| {
             b.iter(|| std::hint::black_box(ddsketchy.quantile(q).unwrap()));
         });
