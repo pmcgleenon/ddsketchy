@@ -160,13 +160,96 @@ impl Store {
         self.shift_bins(shift)
     }
 
+    /// Finds the key of the bucket containing the `rank`-th smallest
+    /// element (0-indexed). Returns `self.max_key` if `rank` is out of
+    /// range (including on an empty store, where `count == 0` makes every
+    /// `rank` out of range).
+    ///
+    /// Scans from *both* ends of the bin array, returning as soon as either
+    /// side's cumulative count crosses its target (`rank` from the front,
+    /// `reversed_rank = count - 1 - rank` from the back). Both directions
+    /// land on the same bucket for a given rank, so this is a pure cost
+    /// optimization, not a behavior change.
+    ///
+    /// If the lowest populated bin alone covers `rank` it returns at once,
+    /// without entering the scan.
+    ///
+    /// The scan first advances each end a whole block of `BLOCK` bins at a
+    /// time while the block's sum shows the target is not inside it. Those
+    /// block sums have no early exit, so they vectorise. The scalar
+    /// two-pointer loop then finishes inside the remaining range.
+    ///
+    /// Racing both ends, rather than picking a direction by comparing `rank`
+    /// to `count`, matters because rank-space and bin-index-space are not
+    /// proportional: values uniform by value concentrate most of their rank
+    /// mass in a few bins near the top of the log-spaced array, so a
+    /// rank-based guess can pick the much longer direction.
+    ///
+    /// See `tests::key_at_rank_bidirectional_matches_forward_scan` and
+    /// `tests::key_at_rank_matches_forward_scan_dense_spiky_and_ramp`, which
+    /// check this against a forward-only reference scan.
+    #[inline]
     pub fn key_at_rank(&self, rank: u64) -> i32 {
-        let mut n = 0u64;
-        for (i, bin) in self.bins.iter().enumerate() {
-            n += *bin;
-            if n > rank {
-                return i as i32 + self.offset;
+        if rank >= self.count {
+            return self.max_key;
+        }
+        // Every bin below `min_key` is empty, so if the lowest populated bin
+        // alone covers `rank` it is the answer. That is where low quantiles
+        // land on heavy-headed data, and on a store that hit its bin limit,
+        // which folds all lower keys into that bin. Answering here skips the
+        // block sums, which cost more than a one-step forward scan.
+        let first = (self.min_key - self.offset) as usize;
+        debug_assert!(self.bins[..first].iter().all(|&b| b == 0));
+        if self.bins[first] > rank {
+            return self.min_key;
+        }
+        self.key_at_rank_scan(rank)
+    }
+
+    #[inline(never)]
+    fn key_at_rank_scan(&self, rank: u64) -> i32 {
+        let bins = self.bins.as_slice();
+        let reversed_rank = self.count - 1 - rank;
+        const BLOCK: usize = 16;
+        let mut forward_sum = 0u64;
+        let mut backward_sum = 0u64;
+        let mut lo = 0usize;
+        let mut hi = bins.len(); // exclusive
+
+        // Blocked phase: from each end in turn, skip a whole block when its
+        // sum shows the target cannot be inside it. The block sums have no
+        // early exit, so they vectorise.
+        while hi - lo >= 2 * BLOCK {
+            let f: u64 = bins[lo..lo + BLOCK].iter().sum();
+            if forward_sum + f > rank {
+                break;
             }
+            forward_sum += f;
+            lo += BLOCK;
+            let b: u64 = bins[hi - BLOCK..hi].iter().sum();
+            if backward_sum + b > reversed_rank {
+                break;
+            }
+            backward_sum += b;
+            hi -= BLOCK;
+        }
+
+        // Scalar phase over bins[lo..=hi]; the target is inside this range.
+        let mut hi = hi - 1;
+        loop {
+            forward_sum += bins[lo];
+            if forward_sum > rank {
+                return lo as i32 + self.offset;
+            }
+            if lo == hi {
+                break;
+            }
+            backward_sum += bins[hi];
+            if backward_sum > reversed_rank {
+                return hi as i32 + self.offset;
+            }
+            lo += 1;
+            hi -= 1;
         }
 
         self.max_key
@@ -290,5 +373,198 @@ mod tests {
         // Verify merged range
         assert_eq!(s1.key_at_rank(0), 0);
         assert_eq!(s1.key_at_rank(99), 99);
+    }
+
+    /// Reference implementation: always scans forward from the start,
+    /// never choosing a direction. This is exactly what `key_at_rank` did
+    /// before the bidirectional-scan optimization.
+    fn key_at_rank_forward_reference(store: &Store, rank: u64) -> i32 {
+        let mut n = 0u64;
+        for (i, bin) in store.bins.iter().enumerate() {
+            n += *bin;
+            if n > rank {
+                return i as i32 + store.offset;
+            }
+        }
+        store.max_key
+    }
+
+    #[test]
+    fn key_at_rank_bidirectional_matches_forward_scan() {
+        // Property: scanning from the nearer end must always land on the
+        // same bucket as always scanning forward, for every rank —
+        // including out-of-range ranks and an empty store. A simple xorshift
+        // RNG avoids pulling `rand` into this unit-test module.
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+
+        for empty in [true, false] {
+            if empty {
+                let store = Store::new(2048);
+                for rank in [0u64, 1, 100] {
+                    assert_eq!(
+                        store.key_at_rank(rank),
+                        key_at_rank_forward_reference(&store, rank)
+                    );
+                }
+                continue;
+            }
+
+            for _ in 0..200 {
+                let mut store = Store::new(4096);
+                let num_keys = 1 + (next() % 500) as i32;
+                let start_key = -1000 + (next() % 2000) as i32;
+                for k in 0..num_keys {
+                    let key = start_key + k;
+                    // Insert a variable, sometimes-zero count per key so
+                    // sparse bins (count 0) are exercised too.
+                    let times = next() % 4;
+                    for _ in 0..times {
+                        store.add(key);
+                    }
+                }
+                if store.count() == 0 {
+                    continue;
+                }
+
+                // In-range ranks, out-of-range ranks, and the exact
+                // boundary (count - 1, count, count + 1).
+                let probe_ranks = [
+                    0u64,
+                    store.count() / 4,
+                    store.count() / 2,
+                    (3 * store.count()) / 4,
+                    store.count().saturating_sub(1),
+                    store.count(),
+                    store.count() + 1,
+                    next() % (store.count() + 10),
+                ];
+                for &rank in &probe_ranks {
+                    let expected = key_at_rank_forward_reference(&store, rank);
+                    let actual = store.key_at_rank(rank);
+                    assert_eq!(
+                        actual,
+                        expected,
+                        "rank={rank} count={} start_key={start_key} num_keys={num_keys}",
+                        store.count()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn key_at_rank_matches_forward_scan_dense_spiky_and_ramp() {
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..300 {
+            let mut store = Store::new(4096);
+            let num_keys = 1 + (next() % 3000) as i32;
+            let start_key = -1500 + (next() % 3000) as i32;
+            let mode = next() % 3;
+            for k in 0..num_keys {
+                let key = start_key + k;
+                let times = match mode {
+                    0 => next() % 3,
+                    1 => {
+                        if k % 97 == 0 {
+                            1000
+                        } else {
+                            0
+                        }
+                    }
+                    _ => (k as u64 * 7) % 50,
+                };
+                for _ in 0..times {
+                    store.add(key);
+                }
+            }
+            if store.count() == 0 {
+                continue;
+            }
+            let count = store.count();
+            let step = (count / 200).max(1);
+            let mut rank = 0;
+            while rank < count + 2 {
+                assert_eq!(
+                    store.key_at_rank(rank),
+                    key_at_rank_forward_reference(&store, rank),
+                    "rank={rank} count={count} mode={mode}"
+                );
+                rank += step;
+            }
+        }
+    }
+
+    #[test]
+    fn key_at_rank_matches_forward_scan_on_collapsed_store() {
+        // A small bin limit forces collapsing, so bins[0] holds folded low
+        // keys and the first-bin fast path is exercised.
+        for limit in [128usize, 256] {
+            let mut store = Store::new(limit);
+            for k in -2000..2000 {
+                store.add(k);
+                if k % 3 == 0 {
+                    store.add(k);
+                }
+            }
+            assert!(store.is_collapsed);
+            let count = store.count();
+            for rank in (0..count + 2).step_by(7) {
+                assert_eq!(
+                    store.key_at_rank(rank),
+                    key_at_rank_forward_reference(&store, rank),
+                    "limit={limit} rank={rank} count={count}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn key_at_rank_matches_forward_scan_on_merged_stores() {
+        // Merging extends, recentres and (with a small limit) collapses the
+        // destination, which exercises the min_key fast path and its
+        // empty-below-min_key assumption on layouts `add` alone never makes.
+        let mut state = 0x1234_5678_9abc_def1_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..200 {
+            let limit = [128usize, 256, 4096][(next() % 3) as usize];
+            let mut dst = Store::new(limit);
+            for _ in 0..(1 + next() % 4) {
+                let mut src = Store::new(limit);
+                let start = -2000 + (next() % 4000) as i32;
+                let span = 1 + (next() % 600) as i32;
+                for _ in 0..(1 + next() % 300) {
+                    src.add(start + (next() % span as u64) as i32);
+                }
+                dst.merge(&src);
+            }
+            let count = dst.count();
+            let step = (count / 100).max(1);
+            let mut rank = 0;
+            while rank < count + 2 {
+                assert_eq!(
+                    dst.key_at_rank(rank),
+                    key_at_rank_forward_reference(&dst, rank),
+                    "limit={limit} rank={rank} count={count}"
+                );
+                rank += step;
+            }
+        }
     }
 }

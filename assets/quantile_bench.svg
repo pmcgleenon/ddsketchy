@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="680" viewBox="0 0 960 680" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+<rect width="960" height="680" fill="#ffffff"/>
+<text x="480.0" y="34" text-anchor="middle" font-size="20" font-weight="600" fill="#111827">quantile() latency, 100,000-value sketch, 1% relative error</text>
+<text x="480.0" y="56" text-anchor="middle" font-size="13" fill="#4b5563">ns per call, lower is better. AWS c6a.xlarge (AMD EPYC 7R13), target-cpu=native</text>
+<rect x="250.0" y="70" width="14" height="14" rx="2" fill="#2563eb"/>
+<text x="270.0" y="82" font-size="13" fill="#111827">ddsketchy</text>
+<rect x="415.0" y="70" width="14" height="14" rx="2" fill="#94a3b8"/>
+<text x="435.0" y="82" font-size="13" fill="#111827">sketches-ddsketch</text>
+<rect x="580.0" y="70" width="14" height="14" rx="2" fill="#f59e0b"/>
+<text x="600.0" y="82" font-size="13" fill="#111827">quantile-sketch</text>
+<text x="80" y="120" font-size="14" font-weight="600" fill="#111827">Uniform by value, 1..1e6</text>
+<line x1="80" y1="350.0" x2="500" y2="350.0" stroke="#9ca3af" stroke-width="1"/>
+<text x="74" y="354.0" text-anchor="end" font-size="11" fill="#6b7280">0</text>
+<line x1="80" y1="313.3" x2="500" y2="313.3" stroke="#e5e7eb" stroke-width="1"/>
+<text x="74" y="317.3" text-anchor="end" font-size="11" fill="#6b7280">100</text>
+<line x1="80" y1="276.7" x2="500" y2="276.7" stroke="#e5e7eb" stroke-width="1"/>
+<text x="74" y="280.7" text-anchor="end" font-size="11" fill="#6b7280">200</text>
+<line x1="80" y1="240.0" x2="500" y2="240.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="74" y="244.0" text-anchor="end" font-size="11" fill="#6b7280">300</text>
+<line x1="80" y1="203.3" x2="500" y2="203.3" stroke="#e5e7eb" stroke-width="1"/>
+<text x="74" y="207.3" text-anchor="end" font-size="11" fill="#6b7280">400</text>
+<line x1="80" y1="166.7" x2="500" y2="166.7" stroke="#e5e7eb" stroke-width="1"/>
+<text x="74" y="170.7" text-anchor="end" font-size="11" fill="#6b7280">500</text>
+<line x1="80" y1="130.0" x2="500" y2="130.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="74" y="134.0" text-anchor="end" font-size="11" fill="#6b7280">600</text>
+<rect x="91.8" y="327.2" width="19.2" height="22.8" fill="#2563eb"><title>ddsketchy p01: 62 ns</title></rect>
+<rect x="111.9" y="264.9" width="19.2" height="85.1" fill="#94a3b8"><title>sketches-ddsketch p01: 232 ns</title></rect>
+<rect x="132.1" y="203.9" width="19.2" height="146.1" fill="#f59e0b"><title>quantile-sketch p01: 398 ns</title></rect>
+<text x="122.0" y="366" text-anchor="middle" font-size="12" fill="#374151">p01</text>
+<rect x="175.8" y="333.5" width="19.2" height="16.5" fill="#2563eb"><title>ddsketchy p10: 45 ns</title></rect>
+<rect x="195.9" y="241.8" width="19.2" height="108.2" fill="#94a3b8"><title>sketches-ddsketch p10: 295 ns</title></rect>
+<rect x="216.1" y="176.2" width="19.2" height="173.8" fill="#f59e0b"><title>quantile-sketch p10: 474 ns</title></rect>
+<text x="206.0" y="366" text-anchor="middle" font-size="12" fill="#374151">p10</text>
+<rect x="259.8" y="337.6" width="19.2" height="12.4" fill="#2563eb"><title>ddsketchy p50: 34 ns</title></rect>
+<rect x="279.9" y="225.2" width="19.2" height="124.8" fill="#94a3b8"><title>sketches-ddsketch p50: 340 ns</title></rect>
+<rect x="300.1" y="157.9" width="19.2" height="192.1" fill="#f59e0b"><title>quantile-sketch p50: 524 ns</title></rect>
+<text x="290.0" y="366" text-anchor="middle" font-size="12" fill="#374151">p50</text>
+<rect x="343.8" y="338.2" width="19.2" height="11.8" fill="#2563eb"><title>ddsketchy p90: 32 ns</title></rect>
+<rect x="363.9" y="219.1" width="19.2" height="130.9" fill="#94a3b8"><title>sketches-ddsketch p90: 357 ns</title></rect>
+<rect x="384.1" y="281.5" width="19.2" height="68.5" fill="#f59e0b"><title>quantile-sketch p90: 187 ns</title></rect>
+<text x="374.0" y="366" text-anchor="middle" font-size="12" fill="#374151">p90</text>
+<rect x="427.8" y="340.3" width="19.2" height="9.7" fill="#2563eb"><title>ddsketchy p99: 26 ns</title></rect>
+<rect x="447.9" y="218.3" width="19.2" height="131.7" fill="#94a3b8"><title>sketches-ddsketch p99: 359 ns</title></rect>
+<rect x="468.1" y="282.5" width="19.2" height="67.5" fill="#f59e0b"><title>quantile-sketch p99: 184 ns</title></rect>
+<text x="458.0" y="366" text-anchor="middle" font-size="12" fill="#374151">p99</text>
+<text x="550" y="120" font-size="14" font-weight="600" fill="#111827">Log-uniform, 1..1e6</text>
+<line x1="550" y1="350.0" x2="970" y2="350.0" stroke="#9ca3af" stroke-width="1"/>
+<text x="544" y="354.0" text-anchor="end" font-size="11" fill="#6b7280">0</text>
+<line x1="550" y1="313.3" x2="970" y2="313.3" stroke="#e5e7eb" stroke-width="1"/>
+<text x="544" y="317.3" text-anchor="end" font-size="11" fill="#6b7280">100</text>
+<line x1="550" y1="276.7" x2="970" y2="276.7" stroke="#e5e7eb" stroke-width="1"/>
+<text x="544" y="280.7" text-anchor="end" font-size="11" fill="#6b7280">200</text>
+<line x1="550" y1="240.0" x2="970" y2="240.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="544" y="244.0" text-anchor="end" font-size="11" fill="#6b7280">300</text>
+<line x1="550" y1="203.3" x2="970" y2="203.3" stroke="#e5e7eb" stroke-width="1"/>
+<text x="544" y="207.3" text-anchor="end" font-size="11" fill="#6b7280">400</text>
+<line x1="550" y1="166.7" x2="970" y2="166.7" stroke="#e5e7eb" stroke-width="1"/>
+<text x="544" y="170.7" text-anchor="end" font-size="11" fill="#6b7280">500</text>
+<line x1="550" y1="130.0" x2="970" y2="130.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="544" y="134.0" text-anchor="end" font-size="11" fill="#6b7280">600</text>
+<rect x="561.8" y="340.8" width="19.2" height="9.2" fill="#2563eb"><title>ddsketchy p01: 25 ns</title></rect>
+<rect x="581.9" y="335.3" width="19.2" height="14.7" fill="#94a3b8"><title>sketches-ddsketch p01: 40 ns</title></rect>
+<rect x="602.1" y="286.4" width="19.2" height="63.6" fill="#f59e0b"><title>quantile-sketch p01: 174 ns</title></rect>
+<text x="592.0" y="366" text-anchor="middle" font-size="12" fill="#374151">p01</text>
+<rect x="645.8" y="334.3" width="19.2" height="15.7" fill="#2563eb"><title>ddsketchy p10: 43 ns</title></rect>
+<rect x="665.9" y="321.6" width="19.2" height="28.4" fill="#94a3b8"><title>sketches-ddsketch p10: 77 ns</title></rect>
+<rect x="686.1" y="270.8" width="19.2" height="79.2" fill="#f59e0b"><title>quantile-sketch p10: 216 ns</title></rect>
+<text x="676.0" y="366" text-anchor="middle" font-size="12" fill="#374151">p10</text>
+<rect x="729.8" y="325.5" width="19.2" height="24.5" fill="#2563eb"><title>ddsketchy p50: 67 ns</title></rect>
+<rect x="749.9" y="264.5" width="19.2" height="85.5" fill="#94a3b8"><title>sketches-ddsketch p50: 233 ns</title></rect>
+<rect x="770.1" y="202.1" width="19.2" height="147.9" fill="#f59e0b"><title>quantile-sketch p50: 403 ns</title></rect>
+<text x="760.0" y="366" text-anchor="middle" font-size="12" fill="#374151">p50</text>
+<rect x="813.8" y="335.4" width="19.2" height="14.6" fill="#2563eb"><title>ddsketchy p90: 40 ns</title></rect>
+<rect x="833.9" y="208.9" width="19.2" height="141.1" fill="#94a3b8"><title>sketches-ddsketch p90: 385 ns</title></rect>
+<rect x="854.1" y="269.8" width="19.2" height="80.2" fill="#f59e0b"><title>quantile-sketch p90: 219 ns</title></rect>
+<text x="844.0" y="366" text-anchor="middle" font-size="12" fill="#374151">p90</text>
+<rect x="897.8" y="338.2" width="19.2" height="11.8" fill="#2563eb"><title>ddsketchy p99: 32 ns</title></rect>
+<rect x="917.9" y="196.0" width="19.2" height="154.0" fill="#94a3b8"><title>sketches-ddsketch p99: 420 ns</title></rect>
+<rect x="938.1" y="284.9" width="19.2" height="65.1" fill="#f59e0b"><title>quantile-sketch p99: 178 ns</title></rect>
+<text x="928.0" y="366" text-anchor="middle" font-size="12" fill="#374151">p99</text>
+<text x="80" y="410" font-size="14" font-weight="600" fill="#111827">Lognormal, σ=2</text>
+<line x1="80" y1="640.0" x2="500" y2="640.0" stroke="#9ca3af" stroke-width="1"/>
+<text x="74" y="644.0" text-anchor="end" font-size="11" fill="#6b7280">0</text>
+<line x1="80" y1="603.3" x2="500" y2="603.3" stroke="#e5e7eb" stroke-width="1"/>
+<text x="74" y="607.3" text-anchor="end" font-size="11" fill="#6b7280">100</text>
+<line x1="80" y1="566.7" x2="500" y2="566.7" stroke="#e5e7eb" stroke-width="1"/>
+<text x="74" y="570.7" text-anchor="end" font-size="11" fill="#6b7280">200</text>
+<line x1="80" y1="530.0" x2="500" y2="530.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="74" y="534.0" text-anchor="end" font-size="11" fill="#6b7280">300</text>
+<line x1="80" y1="493.3" x2="500" y2="493.3" stroke="#e5e7eb" stroke-width="1"/>
+<text x="74" y="497.3" text-anchor="end" font-size="11" fill="#6b7280">400</text>
+<line x1="80" y1="456.7" x2="500" y2="456.7" stroke="#e5e7eb" stroke-width="1"/>
+<text x="74" y="460.7" text-anchor="end" font-size="11" fill="#6b7280">500</text>
+<line x1="80" y1="420.0" x2="500" y2="420.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="74" y="424.0" text-anchor="end" font-size="11" fill="#6b7280">600</text>
+<rect x="91.8" y="617.3" width="19.2" height="22.7" fill="#2563eb"><title>ddsketchy p01: 62 ns</title></rect>
+<rect x="111.9" y="585.4" width="19.2" height="54.6" fill="#94a3b8"><title>sketches-ddsketch p01: 149 ns</title></rect>
+<rect x="132.1" y="512.5" width="19.2" height="127.5" fill="#f59e0b"><title>quantile-sketch p01: 348 ns</title></rect>
+<text x="122.0" y="656" text-anchor="middle" font-size="12" fill="#374151">p01</text>
+<rect x="175.8" y="614.7" width="19.2" height="25.3" fill="#2563eb"><title>ddsketchy p10: 69 ns</title></rect>
+<rect x="195.9" y="564.6" width="19.2" height="75.4" fill="#94a3b8"><title>sketches-ddsketch p10: 206 ns</title></rect>
+<rect x="216.1" y="487.9" width="19.2" height="152.1" fill="#f59e0b"><title>quantile-sketch p10: 415 ns</title></rect>
+<text x="206.0" y="656" text-anchor="middle" font-size="12" fill="#374151">p10</text>
+<rect x="259.8" y="609.0" width="19.2" height="31.0" fill="#2563eb"><title>ddsketchy p50: 85 ns</title></rect>
+<rect x="279.9" y="538.4" width="19.2" height="101.6" fill="#94a3b8"><title>sketches-ddsketch p50: 277 ns</title></rect>
+<rect x="300.1" y="457.6" width="19.2" height="182.4" fill="#f59e0b"><title>quantile-sketch p50: 498 ns</title></rect>
+<text x="290.0" y="656" text-anchor="middle" font-size="12" fill="#374151">p50</text>
+<rect x="343.8" y="614.7" width="19.2" height="25.3" fill="#2563eb"><title>ddsketchy p90: 69 ns</title></rect>
+<rect x="363.9" y="512.1" width="19.2" height="127.9" fill="#94a3b8"><title>sketches-ddsketch p90: 349 ns</title></rect>
+<rect x="384.1" y="495.1" width="19.2" height="144.9" fill="#f59e0b"><title>quantile-sketch p90: 395 ns</title></rect>
+<text x="374.0" y="656" text-anchor="middle" font-size="12" fill="#374151">p90</text>
+<rect x="427.8" y="622.3" width="19.2" height="17.7" fill="#2563eb"><title>ddsketchy p99: 48 ns</title></rect>
+<rect x="447.9" y="490.9" width="19.2" height="149.1" fill="#94a3b8"><title>sketches-ddsketch p99: 407 ns</title></rect>
+<rect x="468.1" y="518.5" width="19.2" height="121.5" fill="#f59e0b"><title>quantile-sketch p99: 331 ns</title></rect>
+<text x="458.0" y="656" text-anchor="middle" font-size="12" fill="#374151">p99</text>
+<text x="550" y="410" font-size="14" font-weight="600" fill="#111827">Pareto, α=1</text>
+<line x1="550" y1="640.0" x2="970" y2="640.0" stroke="#9ca3af" stroke-width="1"/>
+<text x="544" y="644.0" text-anchor="end" font-size="11" fill="#6b7280">0</text>
+<line x1="550" y1="603.3" x2="970" y2="603.3" stroke="#e5e7eb" stroke-width="1"/>
+<text x="544" y="607.3" text-anchor="end" font-size="11" fill="#6b7280">100</text>
+<line x1="550" y1="566.7" x2="970" y2="566.7" stroke="#e5e7eb" stroke-width="1"/>
+<text x="544" y="570.7" text-anchor="end" font-size="11" fill="#6b7280">200</text>
+<line x1="550" y1="530.0" x2="970" y2="530.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="544" y="534.0" text-anchor="end" font-size="11" fill="#6b7280">300</text>
+<line x1="550" y1="493.3" x2="970" y2="493.3" stroke="#e5e7eb" stroke-width="1"/>
+<text x="544" y="497.3" text-anchor="end" font-size="11" fill="#6b7280">400</text>
+<line x1="550" y1="456.7" x2="970" y2="456.7" stroke="#e5e7eb" stroke-width="1"/>
+<text x="544" y="460.7" text-anchor="end" font-size="11" fill="#6b7280">500</text>
+<line x1="550" y1="420.0" x2="970" y2="420.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="544" y="424.0" text-anchor="end" font-size="11" fill="#6b7280">600</text>
+<rect x="561.8" y="635.9" width="19.2" height="4.1" fill="#2563eb"><title>ddsketchy p01: 11 ns</title></rect>
+<rect x="581.9" y="632.2" width="19.2" height="7.8" fill="#94a3b8"><title>sketches-ddsketch p01: 21 ns</title></rect>
+<rect x="602.1" y="581.5" width="19.2" height="58.5" fill="#f59e0b"><title>quantile-sketch p01: 160 ns</title></rect>
+<text x="592.0" y="656" text-anchor="middle" font-size="12" fill="#374151">p01</text>
+<rect x="645.8" y="629.7" width="19.2" height="10.3" fill="#2563eb"><title>ddsketchy p10: 28 ns</title></rect>
+<rect x="665.9" y="630.3" width="19.2" height="9.7" fill="#94a3b8"><title>sketches-ddsketch p10: 27 ns</title></rect>
+<rect x="686.1" y="580.2" width="19.2" height="59.8" fill="#f59e0b"><title>quantile-sketch p10: 163 ns</title></rect>
+<text x="676.0" y="656" text-anchor="middle" font-size="12" fill="#374151">p10</text>
+<rect x="729.8" y="629.2" width="19.2" height="10.8" fill="#2563eb"><title>ddsketchy p50: 30 ns</title></rect>
+<rect x="749.9" y="624.6" width="19.2" height="15.4" fill="#94a3b8"><title>sketches-ddsketch p50: 42 ns</title></rect>
+<rect x="770.1" y="573.4" width="19.2" height="66.6" fill="#f59e0b"><title>quantile-sketch p50: 182 ns</title></rect>
+<text x="760.0" y="656" text-anchor="middle" font-size="12" fill="#374151">p50</text>
+<rect x="813.8" y="624.8" width="19.2" height="15.2" fill="#2563eb"><title>ddsketchy p90: 41 ns</title></rect>
+<rect x="833.9" y="606.5" width="19.2" height="33.5" fill="#94a3b8"><title>sketches-ddsketch p90: 91 ns</title></rect>
+<rect x="854.1" y="457.5" width="19.2" height="182.5" fill="#f59e0b"><title>quantile-sketch p90: 498 ns</title></rect>
+<text x="844.0" y="656" text-anchor="middle" font-size="12" fill="#374151">p90</text>
+<rect x="897.8" y="619.6" width="19.2" height="20.4" fill="#2563eb"><title>ddsketchy p99: 56 ns</title></rect>
+<rect x="917.9" y="583.5" width="19.2" height="56.5" fill="#94a3b8"><title>sketches-ddsketch p99: 154 ns</title></rect>
+<rect x="938.1" y="485.1" width="19.2" height="154.9" fill="#f59e0b"><title>quantile-sketch p99: 422 ns</title></rect>
+<text x="928.0" y="656" text-anchor="middle" font-size="12" fill="#374151">p99</text>
+</svg>
