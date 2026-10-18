@@ -172,9 +172,9 @@ Querying a 100,000-value sketch (values uniform in `1..1_000_000`):
 
 | Implementation | q=0.5 | q=0.9 | q=0.99 |
 |---|---|---|---|
-| ddsketchy | 54.2 ns | 37.9 ns | 34.5 ns |
-| sketches-ddsketch | 261.3 ns | 272.0 ns | 275.5 ns |
-| quantile-sketch | 705.4 ns | 162.4 ns | 159.5 ns |
+| ddsketchy | 32 ns | 32 ns | 26 ns |
+| sketches-ddsketch | 259 ns | 278 ns | 274 ns |
+| quantile-sketch | 706 ns | 163 ns | 158 ns |
 
 ## References
 
