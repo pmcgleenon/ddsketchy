@@ -125,7 +125,8 @@ print(f"Count: {sketch.count}, Sum: {sketch.sum}, Mean: {sketch.mean}")
 Benchmarked on an AWS `c6a.xlarge` (AMD EPYC 7R13, 4 vCPU) against
 [`sketches-ddsketch`](https://github.com/mheffner/rust-sketches-ddsketch) (Datadog's
 Go-port reference) and [`quantile-sketch`](https://github.com/tomtomwombat/quantile-sketch)
-(a lock-free, atomics-based DDSketch), all configured for 1% relative error.
+(a lock-free, atomics-based DDSketch), all configured for 1% relative error and
+built with `RUSTFLAGS="-C target-cpu=native"`.
 
 ### Insert
 
@@ -151,6 +152,19 @@ Mean insert time per value (N = 1,000,000 inserts, lower is better):
 | ddsketchy (`Logarithmic`, default) | 16.4 | 61.1 Melem/s |
 | quantile-sketch | 8.8 | 113.4 Melem/s |
 | sketches-ddsketch | 19.7 | 50.8 Melem/s |
+
+### Merge
+
+Merging one sketch into another, both holding values in `1..1_000_000` at 1%
+relative error (about 690 bins). Merge cost is set by the bin count, not by how
+many values were inserted. The destination is reused across iterations, so this
+is the warm steady state of an aggregator folding many sketches into one:
+
+| Implementation | time/merge |
+|---|---|
+| ddsketchy | 59 ns |
+| sketches-ddsketch | 426 ns |
+| quantile-sketch | 922 ns |
 
 ## References
 
