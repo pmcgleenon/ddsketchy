@@ -165,50 +165,68 @@ impl Store {
     /// range (including on an empty store, where `count == 0` makes every
     /// `rank` out of range).
     ///
-    /// Scans from *both* ends of the bin array at once — one slot from the
-    /// front, one from the back, per iteration — and returns as soon as
-    /// either side's cumulative count crosses its target (`rank` from the
-    /// front, `reversed_rank = count - 1 - rank` from the back). Both
-    /// directions necessarily land on the same bucket for a given rank, so
-    /// this is a pure cost optimization, not a behavior change.
+    /// Scans from *both* ends of the bin array, returning as soon as either
+    /// side's cumulative count crosses its target (`rank` from the front,
+    /// `reversed_rank = count - 1 - rank` from the back). Both directions
+    /// land on the same bucket for a given rank, so this is a pure cost
+    /// optimization, not a behavior change.
     ///
-    /// This deliberately does *not* pick a direction by comparing `rank`
-    /// to `count` (i.e. "is this rank in the lower or upper half by
-    /// count") the way a first version of this did, and the way
-    /// quantile-sketch's `quantile()` still does. That heuristic assumes
-    /// rank-space and bucket-array-index-space are proportional, which
-    /// fails whenever the data isn't uniform across the *log-spaced*
-    /// buckets: e.g. values drawn uniformly by *value* (not by value's
-    /// log) concentrate most of their rank-mass in a short run of buckets
-    /// near one end, so the rank-based midpoint can sit at ~95% of the way
-    /// through the bucket array rather than ~50%, picking the wrong — much
-    /// longer — direction. Racing both directions costs at most ~2x the
-    /// genuinely-shorter side instead of being unboundedly wrong when the
-    /// heuristic misguesses; see `tests::key_at_rank_bidirectional_matches_forward_scan`
-    /// for the correctness property this relies on, checked against a
-    /// reference forward-only implementation across many bin configurations
-    /// and ranks.
+    /// The scan first advances each end a whole block of `BLOCK` bins at a
+    /// time while the block's sum shows the target is not inside it. Those
+    /// block sums have no early exit, so they vectorise. The scalar
+    /// two-pointer loop then finishes inside the remaining range.
+    ///
+    /// Racing both ends, rather than picking a direction by comparing `rank`
+    /// to `count`, matters because rank-space and bin-index-space are not
+    /// proportional: values uniform by value concentrate most of their rank
+    /// mass in a few bins near the top of the log-spaced array, so a
+    /// rank-based guess can pick the much longer direction.
+    ///
+    /// See `tests::key_at_rank_bidirectional_matches_forward_scan` and
+    /// `tests::key_at_rank_matches_forward_scan_dense_spiky_and_ramp`, which
+    /// check this against a forward-only reference scan.
     #[inline]
     pub fn key_at_rank(&self, rank: u64) -> i32 {
         if rank >= self.count {
             return self.max_key;
         }
-
+        let bins = self.bins.as_slice();
         let reversed_rank = self.count - 1 - rank;
+        const BLOCK: usize = 16;
         let mut forward_sum = 0u64;
         let mut backward_sum = 0u64;
         let mut lo = 0usize;
-        let mut hi = self.bins.len() - 1;
+        let mut hi = bins.len(); // exclusive
 
+        // Blocked phase: from each end in turn, skip a whole block when its
+        // sum shows the target cannot be inside it. The block sums have no
+        // early exit, so they vectorise.
+        while hi - lo >= 2 * BLOCK {
+            let f: u64 = bins[lo..lo + BLOCK].iter().sum();
+            if forward_sum + f > rank {
+                break;
+            }
+            forward_sum += f;
+            lo += BLOCK;
+            let b: u64 = bins[hi - BLOCK..hi].iter().sum();
+            if backward_sum + b > reversed_rank {
+                break;
+            }
+            backward_sum += b;
+            hi -= BLOCK;
+        }
+
+        // Scalar phase over bins[lo..=hi]; the target is inside this range.
+        let mut hi = hi - 1;
         loop {
-            forward_sum += self.bins[lo];
+            forward_sum += bins[lo];
             if forward_sum > rank {
                 return lo as i32 + self.offset;
             }
             if lo == hi {
                 break;
             }
-            backward_sum += self.bins[hi];
+            backward_sum += bins[hi];
             if backward_sum > reversed_rank {
                 return hi as i32 + self.offset;
             }
@@ -418,6 +436,54 @@ mod tests {
                         store.count()
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn key_at_rank_matches_forward_scan_dense_spiky_and_ramp() {
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..300 {
+            let mut store = Store::new(4096);
+            let num_keys = 1 + (next() % 3000) as i32;
+            let start_key = -1500 + (next() % 3000) as i32;
+            let mode = next() % 3;
+            for k in 0..num_keys {
+                let key = start_key + k;
+                let times = match mode {
+                    0 => next() % 3,
+                    1 => {
+                        if k % 97 == 0 {
+                            1000
+                        } else {
+                            0
+                        }
+                    }
+                    _ => (k as u64 * 7) % 50,
+                };
+                for _ in 0..times {
+                    store.add(key);
+                }
+            }
+            if store.count() == 0 {
+                continue;
+            }
+            let count = store.count();
+            let step = (count / 2000).max(1);
+            let mut rank = 0;
+            while rank < count + 2 {
+                assert_eq!(
+                    store.key_at_rank(rank),
+                    key_at_rank_forward_reference(&store, rank),
+                    "rank={rank} count={count} mode={mode}"
+                );
+                rank += step;
             }
         }
     }
