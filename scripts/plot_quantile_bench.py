@@ -55,11 +55,13 @@ def check_complete(results):
 
 
 def nice_ceiling(v):
-    step = 10 ** math.floor(math.log10(v))
-    for m in (1, 2, 2.5, 5, 10):
-        if m * step >= v:
-            return m * step, (m * step) / (5 if m in (1, 5, 10) else 4)
-    return 10 * step, 2 * step
+    """Smallest round axis top >= v with at most 6 gridline steps."""
+    exp = 10 ** math.floor(math.log10(v))
+    for tick in (exp / 10 * m for m in (1, 2, 2.5, 5, 10, 20, 25, 50)):
+        steps = math.ceil(v / tick)
+        if steps <= 6:
+            return steps * tick, tick
+    return math.ceil(v / exp) * exp, exp
 
 
 def svg(results, machine):
