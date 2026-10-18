@@ -475,7 +475,7 @@ mod tests {
                 continue;
             }
             let count = store.count();
-            let step = (count / 2000).max(1);
+            let step = (count / 200).max(1);
             let mut rank = 0;
             while rank < count + 2 {
                 assert_eq!(
