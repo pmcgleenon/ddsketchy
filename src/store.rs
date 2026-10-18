@@ -171,6 +171,9 @@ impl Store {
     /// land on the same bucket for a given rank, so this is a pure cost
     /// optimization, not a behavior change.
     ///
+    /// If `bins[0]` alone covers `rank` it returns at once; that is where a
+    /// collapsed store keeps all its folded low values.
+    ///
     /// The scan first advances each end a whole block of `BLOCK` bins at a
     /// time while the block's sum shows the target is not inside it. Those
     /// block sums have no early exit, so they vectorise. The scalar
@@ -191,6 +194,12 @@ impl Store {
             return self.max_key;
         }
         let bins = self.bins.as_slice();
+        // A store that hit its bin limit folds every lower key into bins[0],
+        // so all low quantiles land there. Answer those without the block
+        // sums, which would otherwise cost more than main's one-step scan.
+        if bins[0] > rank {
+            return self.offset;
+        }
         let reversed_rank = self.count - 1 - rank;
         const BLOCK: usize = 16;
         let mut forward_sum = 0u64;
@@ -484,6 +493,30 @@ mod tests {
                     "rank={rank} count={count} mode={mode}"
                 );
                 rank += step;
+            }
+        }
+    }
+
+    #[test]
+    fn key_at_rank_matches_forward_scan_on_collapsed_store() {
+        // A small bin limit forces collapsing, so bins[0] holds folded low
+        // keys and the first-bin fast path is exercised.
+        for limit in [128usize, 256] {
+            let mut store = Store::new(limit);
+            for k in -2000..2000 {
+                store.add(k);
+                if k % 3 == 0 {
+                    store.add(k);
+                }
+            }
+            assert!(store.is_collapsed);
+            let count = store.count();
+            for rank in (0..count + 2).step_by(7) {
+                assert_eq!(
+                    store.key_at_rank(rank),
+                    key_at_rank_forward_reference(&store, rank),
+                    "limit={limit} rank={rank} count={count}"
+                );
             }
         }
     }
