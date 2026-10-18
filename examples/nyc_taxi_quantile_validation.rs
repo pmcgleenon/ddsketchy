@@ -1,6 +1,5 @@
-// Reads raw little-endian f64 values from stdin (produced by
-// scripts/extract_trip_times.py streaming NYC TLC FHVHV trip-duration data)
-// and feeds them into ddsketchy, sketches-ddsketch (an independent
+// Reads raw little-endian f64 values from stdin (for example, NYC TLC FHVHV
+// trip durations exported from the Parquet `trip_time` column) and feeds them into ddsketchy, sketches-ddsketch (an independent
 // Datadog-algorithm port), and quantile-sketch (a lock-free DDSketch),
 // without ever storing the values, so this scales to real datasets far too
 // large to hold in memory as a Vec. At the end, reports count and max
@@ -12,7 +11,7 @@
 // rather than another DDSketch port of the same reference.
 //
 // Usage:
-//   python3 scripts/extract_trip_times.py file1.parquet file2.parquet... \
+//   <producer of raw little-endian f64 values> \
 //     | ./target/release/examples/nyc_taxi_quantile_validation
 
 use ddsketchy::DDSketch;
