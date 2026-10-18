@@ -80,6 +80,7 @@ where
 /// Set via [`DDSketchBuilder::mapping`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum IndexMapping {
     /// Exact `ln()`-based logarithmic mapping (Datadog's `Interpolation.NONE`,
     /// and what Datadog's own `NewDefaultDDSketch` uses). Bit-for-bit
