@@ -172,6 +172,11 @@ Time per `quantile()` call on a 100,000-value sketch. Where the target bin sits 
 the bin array depends on the distribution, so four are measured. quantile-sketch's
 fixed range is sized to each dataset.
 
+![quantile() latency by distribution and quantile](https://raw.githubusercontent.com/pmcgleenon/ddsketchy/main/assets/quantile_bench.svg)
+
+<details>
+<summary>Exact numbers</summary>
+
 **Uniform by value, `1..1_000_000`**
 
 | Implementation | p01 | p10 | p50 | p90 | p99 |
@@ -203,6 +208,8 @@ fixed range is sized to each dataset.
 | ddsketchy | 20 ns | 27 ns | 28 ns | 40 ns | 56 ns |
 | sketches-ddsketch | 19 ns | 26 ns | 35 ns | 63 ns | 95 ns |
 | quantile-sketch | 162 ns | 163 ns | 183 ns | 444 ns | 383 ns |
+
+</details>
 
 ## References
 
