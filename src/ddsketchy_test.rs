@@ -1,4 +1,4 @@
-use crate::ddsketchy::{DDSketch, DDSketchError};
+use crate::ddsketchy::{DDSketch, DDSketchError, IndexMapping};
 use approx::assert_relative_eq;
 use rand_distr::{Distribution, Exp, Normal};
 
@@ -657,4 +657,143 @@ fn test_error_trait_implementation() {
     let error2 = DDSketchError::InvalidAlpha;
     assert_eq!(error, error2);
     println!("Error debug: {:?}", error);
+}
+
+#[test]
+fn test_default_mapping_is_logarithmic() {
+    assert_eq!(
+        DDSketch::new(0.01).unwrap().mapping(),
+        IndexMapping::Logarithmic
+    );
+    assert_eq!(DDSketch::default().mapping(), IndexMapping::Logarithmic);
+    assert_eq!(
+        DDSketch::builder(0.01).build().unwrap().mapping(),
+        IndexMapping::Logarithmic
+    );
+}
+
+#[test]
+fn test_cubic_mapping_opt_in() {
+    let sketch = DDSketch::builder(0.01)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    assert_eq!(sketch.mapping(), IndexMapping::Cubic);
+}
+
+#[test]
+fn test_cubic_mapping_diverges_from_logarithmic() {
+    // Sanity check that the enum actually changes behavior — a regression
+    // here would mean `IndexMapping::Cubic` silently fell back to the exact
+    // path, making the whole feature a no-op.
+    let values = [1.0, 2.0, 3.0, 4.0, 5.0, 17.3, 1000.0];
+
+    let mut log_sketch = DDSketch::new(RELATIVE_ERROR).unwrap();
+    let mut cubic_sketch = DDSketch::builder(RELATIVE_ERROR)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    for &v in &values {
+        log_sketch.add(v);
+        cubic_sketch.add(v);
+    }
+
+    let log_median = log_sketch.quantile(0.5).unwrap();
+    let cubic_median = cubic_sketch.quantile(0.5).unwrap();
+    assert_ne!(
+        log_median, cubic_median,
+        "Cubic and Logarithmic mappings should not produce bit-identical output"
+    );
+}
+
+#[test]
+fn test_per_value_guarantee_sweep_both_mappings() {
+    // The DDSketch guarantee is per value: for every v, the reconstructed value
+    // of v's bucket is within `alpha` of v. Sweep the mantissa across several
+    // binades (the Cubic approximation's error is a function of the mantissa)
+    // and check the bound strictly -- not the 2x tolerance that
+    // `assert_within_relative_error` allows for the merge tests above.
+    // Also check that the public `key()` names the bin `add()` incremented.
+    for mapping in [IndexMapping::Logarithmic, IndexMapping::Cubic] {
+        for alpha in [0.001, 0.01, 0.05] {
+            for exponent in -6..=6 {
+                let base = 2f64.powi(exponent);
+                let steps = 1000;
+                for i in 0..steps {
+                    let v = base * (1.0 + i as f64 / steps as f64);
+                    for signed in [v, -v] {
+                        let mut sketch = DDSketch::builder(alpha).mapping(mapping).build().unwrap();
+                        // count == 1 short-circuits quantile() to the exact
+                        // min/max; insert twice to force bucket reconstruction.
+                        sketch.add(signed);
+                        sketch.add(signed);
+                        let est = sketch.quantile(0.5).unwrap();
+                        let rel_err = ((est - signed) / signed).abs();
+                        assert!(
+                            rel_err <= alpha + 1e-12,
+                            "{mapping:?} alpha={alpha} v={signed}: rel_err={rel_err} exceeds alpha"
+                        );
+                    }
+                    let mut sketch = DDSketch::builder(alpha).mapping(mapping).build().unwrap();
+                    sketch.add(v);
+                    assert_eq!(
+                        sketch.key(v),
+                        sketch.positive_key_at_rank(0),
+                        "{mapping:?} alpha={alpha} v={v}: key() disagrees with the bin add() stored"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn test_cubic_mapping_negative_and_zero_values() {
+    let mut sketch = DDSketch::builder(0.01)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    for v in [-100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0] {
+        sketch.add(v);
+    }
+    assert_eq!(sketch.count(), 7);
+    assert_within_relative_error(sketch.quantile(0.0).unwrap(), -100.0, 0.01);
+    assert_within_relative_error(sketch.quantile(1.0).unwrap(), 100.0, 0.01);
+    for &q in &TEST_QUANTILES {
+        assert!(sketch.quantile(q).unwrap().is_finite());
+    }
+}
+
+#[test]
+fn test_cubic_mapping_merge_rejects_mismatched_mapping() {
+    let mut log_sketch = DDSketch::new(0.01).unwrap();
+    log_sketch.add(1.0);
+
+    let mut cubic_sketch = DDSketch::builder(0.01)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    cubic_sketch.add(2.0);
+
+    assert_eq!(
+        log_sketch.merge(&cubic_sketch).unwrap_err(),
+        DDSketchError::AlphaMismatch
+    );
+}
+
+#[test]
+fn test_cubic_mapping_merge_succeeds_same_mapping() {
+    let mut a = DDSketch::builder(0.01)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    a.add(1.0);
+    let mut b = DDSketch::builder(0.01)
+        .mapping(IndexMapping::Cubic)
+        .build()
+        .unwrap();
+    b.add(2.0);
+
+    a.merge(&b).unwrap();
+    assert_eq!(a.count(), 2);
 }

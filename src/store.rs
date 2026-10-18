@@ -38,12 +38,14 @@ impl Store {
         self.bins.is_empty()
     }
 
+    #[inline]
     pub fn add(&mut self, key: i32) {
         let idx = self.get_index(key);
         self.bins[idx] += 1;
         self.count += 1;
     }
 
+    #[inline]
     fn get_index(&mut self, key: i32) -> usize {
         if key < self.min_key {
             if self.is_collapsed {
@@ -61,6 +63,7 @@ impl Store {
         (key - self.offset) as usize
     }
 
+    #[cold]
     fn extend_range(&mut self, key: i32, second_key: Option<i32>) {
         let second_key = second_key.unwrap_or(key);
         let new_min_key = i32::min(key, i32::min(second_key, self.min_key));

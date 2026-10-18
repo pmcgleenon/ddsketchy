@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use ddsketchy::DDSketch;
+use ddsketchy::{DDSketch, IndexMapping};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 fn bench_insert(c: &mut Criterion) {
@@ -17,6 +17,22 @@ fn bench_insert(c: &mut Criterion) {
                 }
             });
         });
+
+        group.bench_with_input(
+            BenchmarkId::new("ddsketchy-cubic", size),
+            &size,
+            |b, &_n| {
+                let mut sketch = DDSketch::builder(0.01)
+                    .mapping(IndexMapping::Cubic)
+                    .build()
+                    .expect("Failed to create sketch");
+                b.iter(|| {
+                    for &v in &values {
+                        sketch.add(v);
+                    }
+                });
+            },
+        );
     }
     group.finish();
 }
