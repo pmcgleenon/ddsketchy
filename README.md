@@ -178,24 +178,22 @@ Querying a 100,000-value sketch (values uniform in `1..1_000_000`):
 
 `examples/nyc_taxi_quantile_validation.rs` runs the same kind of check against
 a real dataset: NYC TLC FHVHV (Uber/Lyft) trip-duration data, streamed via
-`scripts/extract_trip_times.py`. `examples/go_reference` runs the identical
-stream through Datadog's own Go reference implementation
-([`sketches-go`](https://github.com/DataDog/sketches-go)) for a fourth,
-independently-implemented data point. Across 1,002,281,387 real trip
-durations, all three DDSketch ports of the same reference algorithm --
-ddsketchy, sketches-ddsketch, and sketches-go -- agreed **exactly** at every
-probed quantile; `quantile-sketch` (a different design, with its own cubic
-approximation) stays close but shows its expected small deviation:
+`scripts/extract_trip_times.py`. Across 1,002,281,387 real trip durations,
+ddsketchy and sketches-ddsketch -- two independent ports of the same reference
+algorithm -- agreed **exactly** at every probed quantile, and so did Datadog's
+own Go implementation ([`sketches-go`](https://github.com/DataDog/sketches-go))
+when the same stream was fed through it in a one-off check; `quantile-sketch`
+(a different design, with its own cubic approximation) stays close but shows
+its expected small deviation:
 
 ```
 $ python3 scripts/extract_trip_times.py <parquet files...> \
-    | tee >(./target/release/examples/nyc_taxi_quantile_validation) \
-    | (cd examples/go_reference && go run .)
+    | ./target/release/examples/nyc_taxi_quantile_validation
 count=1002281387 max_rel_diff_vs_sketches_ddsketch=0.000000 (at q=0.999, bound=2*alpha=0.020)
-q=0.100: ddsketchy=391.564  sketches-ddsketch=391.564  quantile-sketch=391.798  sketches-go=391.564
-q=0.500: ddsketchy=944.049  sketches-ddsketch=944.049  quantile-sketch=937.867  sketches-go=944.049
-q=0.900: ddsketchy=2186.826  sketches-ddsketch=2186.826  quantile-sketch=2153.193  sketches-go=2186.826
-q=0.990: ddsketchy=4065.236  sketches-ddsketch=4065.236  quantile-sketch=4058.880  sketches-go=4065.236
+q=0.100: ddsketchy=391.564  sketches-ddsketch=391.564  quantile-sketch=391.798
+q=0.500: ddsketchy=944.049  sketches-ddsketch=944.049  quantile-sketch=937.867
+q=0.900: ddsketchy=2186.826  sketches-ddsketch=2186.826  quantile-sketch=2153.193
+q=0.990: ddsketchy=4065.236  sketches-ddsketch=4065.236  quantile-sketch=4058.880
 ```
 
 The checks above only show the sketches agreeing with *each other*. `scripts/exact_quantiles.py`
@@ -227,13 +225,10 @@ cap changes nothing here. Measured with `examples/nyc_taxi_memory.rs`
 |---|---|---|
 | ddsketchy | 3416 KB (max_bins=4096) | 3408 KB (1024) |
 | sketches-ddsketch | 3272 KB (max_num_bins=2048) | 3440 KB (1024) |
-| sketches-go | 5116 KB (unbounded) | 5000 KB (1024) |
 | quantile-sketch (fixed range) | 3336 KB | -- |
 
 All deltas are within normal process-level noise, confirming the cap wasn't
-the binding constraint for this data. `sketches-go`'s higher baseline is
-consistent with Go runtime/GC overhead rather than sketch size -- its own
-bucket array is a few KB either way, same as the others.
+the binding constraint for this data.
 
 ## References
 
