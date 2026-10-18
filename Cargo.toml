@@ -25,7 +25,7 @@ name = "insert_compare"
 harness = false
 
 [[bench]]
-name = "full_compare"
+name = "quantile_compare"
 harness = false
 
 [[bench]]
