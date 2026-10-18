@@ -58,4 +58,4 @@ mod datadog_reference_tests;
 #[cfg(test)]
 mod serde_tests;
 
-pub use ddsketchy::{DDSketch, DDSketchBuilder, DDSketchError};
+pub use ddsketchy::{DDSketch, DDSketchBuilder, DDSketchError, IndexMapping};

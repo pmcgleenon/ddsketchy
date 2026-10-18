@@ -52,6 +52,8 @@ criterion = "0.8"
 approx = "0.5"
 # existing Go-port implementation for comparison
 sketches-ddsketch = "0.4"
+# lock-free concurrent DDSketch, for comparison
+quantile-sketch = "0.1"
 # For serialization testing
 serde_json = "1.0"
 

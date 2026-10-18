@@ -120,6 +120,38 @@ print(f"P99: {sketch.quantile(0.99)}")
 print(f"Count: {sketch.count}, Sum: {sketch.sum}, Mean: {sketch.mean}")
 ```
 
+## Performance
+
+Benchmarked on an AWS `c6a.xlarge` (AMD EPYC 7R13, 4 vCPU) against
+[`sketches-ddsketch`](https://github.com/mheffner/rust-sketches-ddsketch) (Datadog's
+Go-port reference) and [`quantile-sketch`](https://github.com/tomtomwombat/quantile-sketch)
+(a lock-free, atomics-based DDSketch), all configured for 1% relative error.
+
+### Insert
+
+ddsketchy ships two index-mapping strategies: `Logarithmic` (the default, bit-exact
+with Datadog's reference implementation) and an opt-in `Cubic` mapping that replaces
+`f64::ln()` with a cubic-interpolated IEEE-754 bit-manipulation approximation, trading
+a small amount of mapping precision (still within the configured relative-error bound)
+for insert speed:
+
+```rust
+use ddsketchy::{DDSketch, IndexMapping};
+
+let sketch = DDSketch::builder(0.01)
+    .mapping(IndexMapping::Cubic)
+    .build()?;
+```
+
+Mean insert time per value (N = 1,000,000 inserts, lower is better):
+
+| Implementation | ns/insert | Throughput |
+|---|---|---|
+| ddsketchy (`Cubic`) | 10.5 | 95.1 Melem/s |
+| ddsketchy (`Logarithmic`, default) | 16.4 | 61.1 Melem/s |
+| quantile-sketch | 8.8 | 113.4 Melem/s |
+| sketches-ddsketch | 19.7 | 50.8 Melem/s |
+
 ## References
 
 * [DDSketch: A Fast and Fully-Mergeable Quantile Sketch with Relative-Error Guarantees](https://arxiv.org/pdf/1908.10693.pdf) - The original paper describing the DDSketch algorithm
