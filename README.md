@@ -168,13 +168,41 @@ is the warm steady state of an aggregator folding many sketches into one:
 
 ### Quantile
 
-Querying a 100,000-value sketch (values uniform in `1..1_000_000`):
+Time per `quantile()` call on a 100,000-value sketch. Where the target bin sits in
+the bin array depends on the distribution, so four are measured. quantile-sketch's
+fixed range is sized to each dataset.
 
-| Implementation | q=0.5 | q=0.9 | q=0.99 |
-|---|---|---|---|
-| ddsketchy | 32 ns | 32 ns | 26 ns |
-| sketches-ddsketch | 259 ns | 278 ns | 274 ns |
-| quantile-sketch | 706 ns | 163 ns | 158 ns |
+**Uniform by value, `1..1_000_000`**
+
+| Implementation | p01 | p10 | p50 | p90 | p99 |
+|---|---|---|---|---|---|
+| ddsketchy | 59 ns | 43 ns | 32 ns | 32 ns | 26 ns |
+| sketches-ddsketch | 134 ns | 172 ns | 188 ns | 204 ns | 199 ns |
+| quantile-sketch | 399 ns | 474 ns | 525 ns | 186 ns | 181 ns |
+
+**Log-uniform, `1..1_000_000`**
+
+| Implementation | p01 | p10 | p50 | p90 | p99 |
+|---|---|---|---|---|---|
+| ddsketchy | 23 ns | 41 ns | 66 ns | 38 ns | 31 ns |
+| sketches-ddsketch | 33 ns | 56 ns | 134 ns | 212 ns | 237 ns |
+| quantile-sketch | 175 ns | 214 ns | 401 ns | 216 ns | 174 ns |
+
+**Lognormal, μ=0, σ=2**
+
+| Implementation | p01 | p10 | p50 | p90 | p99 |
+|---|---|---|---|---|---|
+| ddsketchy | 61 ns | 66 ns | 84 ns | 68 ns | 46 ns |
+| sketches-ddsketch | 92 ns | 122 ns | 159 ns | 193 ns | 230 ns |
+| quantile-sketch | 345 ns | 416 ns | 497 ns | 368 ns | 319 ns |
+
+**Pareto, scale 1, α=1**
+
+| Implementation | p01 | p10 | p50 | p90 | p99 |
+|---|---|---|---|---|---|
+| ddsketchy | 20 ns | 27 ns | 28 ns | 40 ns | 56 ns |
+| sketches-ddsketch | 19 ns | 26 ns | 35 ns | 63 ns | 95 ns |
+| quantile-sketch | 162 ns | 163 ns | 183 ns | 444 ns | 383 ns |
 
 ## References
 
