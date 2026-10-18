@@ -171,8 +171,8 @@ impl Store {
     /// land on the same bucket for a given rank, so this is a pure cost
     /// optimization, not a behavior change.
     ///
-    /// If `bins[0]` alone covers `rank` it returns at once; that is where a
-    /// collapsed store keeps all its folded low values.
+    /// If the lowest populated bin alone covers `rank` it returns at once,
+    /// without entering the scan.
     ///
     /// The scan first advances each end a whole block of `BLOCK` bins at a
     /// time while the block's sum shows the target is not inside it. Those
@@ -193,13 +193,22 @@ impl Store {
         if rank >= self.count {
             return self.max_key;
         }
-        let bins = self.bins.as_slice();
-        // A store that hit its bin limit folds every lower key into bins[0],
-        // so all low quantiles land there. Answer those without the block
-        // sums, which would otherwise cost more than main's one-step scan.
-        if bins[0] > rank {
-            return self.offset;
+        // Every bin below `min_key` is empty, so if the lowest populated bin
+        // alone covers `rank` it is the answer. That is where low quantiles
+        // land on heavy-headed data, and on a store that hit its bin limit,
+        // which folds all lower keys into that bin. Answering here skips the
+        // block sums, which cost more than a one-step forward scan.
+        let first = (self.min_key - self.offset) as usize;
+        debug_assert!(self.bins[..first].iter().all(|&b| b == 0));
+        if self.bins[first] > rank {
+            return self.min_key;
         }
+        self.key_at_rank_scan(rank)
+    }
+
+    #[inline(never)]
+    fn key_at_rank_scan(&self, rank: u64) -> i32 {
+        let bins = self.bins.as_slice();
         let reversed_rank = self.count - 1 - rank;
         const BLOCK: usize = 16;
         let mut forward_sum = 0u64;
@@ -517,6 +526,44 @@ mod tests {
                     key_at_rank_forward_reference(&store, rank),
                     "limit={limit} rank={rank} count={count}"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn key_at_rank_matches_forward_scan_on_merged_stores() {
+        // Merging extends, recentres and (with a small limit) collapses the
+        // destination, which exercises the min_key fast path and its
+        // empty-below-min_key assumption on layouts `add` alone never makes.
+        let mut state = 0x1234_5678_9abc_def1_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..200 {
+            let limit = [128usize, 256, 4096][(next() % 3) as usize];
+            let mut dst = Store::new(limit);
+            for _ in 0..(1 + next() % 4) {
+                let mut src = Store::new(limit);
+                let start = -2000 + (next() % 4000) as i32;
+                let span = 1 + (next() % 600) as i32;
+                for _ in 0..(1 + next() % 300) {
+                    src.add(start + (next() % span as u64) as i32);
+                }
+                dst.merge(&src);
+            }
+            let count = dst.count();
+            let step = (count / 100).max(1);
+            let mut rank = 0;
+            while rank < count + 2 {
+                assert_eq!(
+                    dst.key_at_rank(rank),
+                    key_at_rank_forward_reference(&dst, rank),
+                    "limit={limit} rank={rank} count={count}"
+                );
+                rank += step;
             }
         }
     }
