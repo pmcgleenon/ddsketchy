@@ -188,6 +188,6 @@ Querying a 100,000-value sketch (values uniform in `1..1_000_000`):
 | [libdd-ddsketch](https://crates.io/crates/libdd-ddsketch) | Rust | Apache-2.0 | Datadog's own official Rust port, published as part of [libdatadog](https://github.com/DataDog/libdatadog/tree/main/libdd-ddsketch) |
 | [sketches-java](https://github.com/DataDog/sketches-java) | Java | Apache-2.0 | |
 | [sketches-py](https://github.com/DataDog/sketches-py) | Python | custom (see repo) | |
-| [sketches-ddsketch](https://github.com/mheffner/rust-sketches-ddsketch) | Rust | Apache-2.0 | Direct Rust port of `sketches-go`; used throughout this crate's benchmarks as the Rust reference |
-| [quantile-sketch](https://github.com/tomtomwombat/quantile-sketch) | Rust | Apache-2.0 | Fixed value range chosen at construction (`insert` panics out-of-range); also benchmarked throughout this crate's README |
+| [sketches-ddsketch](https://github.com/mheffner/rust-sketches-ddsketch) | Rust | Apache-2.0 | Direct Rust port of `sketches-go` |
+| [quantile-sketch](https://github.com/tomtomwombat/quantile-sketch) | Rust | Apache-2.0 | Fixed value range chosen at construction |
 | [opentelemetry-rust ddsketch aggregator](https://github.com/cecton/opentelemetry-rust/blob/a0899d9ed595343e9d4eb2dbd994235dedb501ed/opentelemetry/src/sdk/metrics/aggregators/ddsketch.rs#L778-L796) | Rust | Apache-2.0 | Embedded aggregator inside an OpenTelemetry fork, not a standalone crate |
