@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8](https://github.com/pmcgleenon/ddsketchy/compare/v0.1.7...v0.1.8) - 2026-10-18
+
+### Other
+
+- *(quantile)* blocked two-pointer scan in key_at_rank ([#36](https://github.com/pmcgleenon/ddsketchy/pull/36))
+- *(merge)* compare merge against sketches-ddsketch and quantile-sketch ([#35](https://github.com/pmcgleenon/ddsketchy/pull/35))
+- *(insert)* opt-in Cubic index mapping for faster insert ([#34](https://github.com/pmcgleenon/ddsketchy/pull/34))
+- Potential fix for code scanning alert no. 6: Workflow does not contain permissions ([#33](https://github.com/pmcgleenon/ddsketchy/pull/33))
+- *(deps)* update sketches-ddsketch requirement from 0.3 to 0.4 ([#31](https://github.com/pmcgleenon/ddsketchy/pull/31))
+
 ## [0.1.7](https://github.com/pmcgleenon/ddsketchy/compare/v0.1.6...v0.1.7) - 2026-06-12
 
 ### Other
